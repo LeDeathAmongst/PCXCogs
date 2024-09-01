@@ -27,7 +27,8 @@ DEFAULT_DESCRIPTION = (
     "⚙️ **Settings**: View current channel settings.\n"
     "👥 **Users**: Set a user limit for the channel.\n"
     "🌍 **Region**: Change the voice region of the channel.\n"
-    "🔄 **Transfer Owner**: Transfer channel ownership to another user."
+    "🔄 **Transfer Owner**: Transfer channel ownership to another user.\n"
+    "ℹ️ **Info**: View information about the current voice channel."
 )
 
 class AutoRoomCommands(MixinMeta, ABC):
@@ -37,13 +38,18 @@ class AutoRoomCommands(MixinMeta, ABC):
         super().__init__(*args, **kwargs)
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
 
+        # Register default values for each guild
+        default_guild = {
+            "description": DEFAULT_DESCRIPTION,
+        }
+
         # Register default values for each channel
         default_channel = {
             "allowed_users": [],
             "denied_users": [],
             "allowed_roles": [],
             "denied_roles": [],
-            "description": "",  # Initialize with an empty string
+            "owner": None,
             "buttons": {
                 "allow": {"emoji": "✅", "name": "Allow", "style": discord.ButtonStyle.primary},
                 "bitrate": {"emoji": "🔊", "name": "Bitrate", "style": discord.ButtonStyle.primary},
@@ -57,15 +63,18 @@ class AutoRoomCommands(MixinMeta, ABC):
                 "users": {"emoji": "👥", "name": "Users", "style": discord.ButtonStyle.primary},
                 "region": {"emoji": "🌍", "name": "Region", "style": discord.ButtonStyle.primary},
                 "transfer": {"emoji": "🔄", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
+                "info": {"emoji": "ℹ️", "name": "Info", "style": discord.ButtonStyle.primary},
             }
         }
-        # Register the default settings for channels
+
+        # Register the default settings for guilds and channels
+        self.config.register_guild(**default_guild)
         self.config.register_channel(**default_channel)
 
-    async def get_description(self, channel: discord.VoiceChannel) -> str:
-        """Retrieve the description for the channel, defaulting if not set."""
-        description = await self.config.channel(channel).description()
-        return description if description else DEFAULT_DESCRIPTION
+    async def get_guild_description(self, guild: discord.Guild) -> str:
+        """Retrieve the description for the guild, defaulting if not set."""
+        description = await self.config.guild(guild).description()
+        return description or DEFAULT_DESCRIPTION
 
     @commands.group()
     @commands.guild_only()
@@ -75,69 +84,38 @@ class AutoRoomCommands(MixinMeta, ABC):
     @autoroom.command(name="controlpanel")
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
         """Send the control panel for your AutoRoom."""
-        autoroom_channel, autoroom_info = await self._get_autoroom_channel_and_info(ctx)
-        if not autoroom_channel or not autoroom_info:
+        voice_channel = self._get_current_voice_channel(ctx.author)
+        if not voice_channel:
+            await ctx.send("You must be in a voice channel to use this command.")
             return
 
-        # Use the get_description method to retrieve the description
-        description = await self.get_description(autoroom_channel)
-        buttons_config = await self.config.channel(autoroom_channel).buttons()
+        autoroom_info = await self.get_autoroom_info(voice_channel)
+        if not autoroom_info:
+            await ctx.send("This voice channel is not managed by AutoRoom.")
+            return
 
-        embed = discord.Embed(title=f"Control Panel for {autoroom_channel.name}", description=description, color=0x7289da)
+        # Use the get_guild_description method to retrieve the description
+        description = await self.get_guild_description(ctx.guild)
+        buttons_config = await self.config.channel(voice_channel).buttons()
+
+        embed = discord.Embed(title=f"Control Panel for {voice_channel.name}", description=description, color=0x7289da)
         view = discord.ui.View()
 
         for key, button in buttons_config.items():
             view.add_item(discord.ui.Button(
                 label=button["name"],
                 emoji=button["emoji"],
-                custom_id=f"{key}_{autoroom_channel.id}",
+                custom_id=f"{key}_{voice_channel.id}",
                 style=button["style"]
             ))
 
-        await ctx.send(embed=embed, view=view, ephemeral=True)
+        await ctx.send(embed=embed, view=view)
 
     @autoroom.command(name="description")
     async def autoroom_description(self, ctx: commands.Context, *, description: str) -> None:
         """Set a custom description for the control panel."""
-        autoroom_channel, _ = await self._get_autoroom_channel_and_info(ctx)
-        if not autoroom_channel:
-            return
-
-        await self.config.channel(autoroom_channel).description.set(description)
-        await ctx.send(f"Description set to: {description}", ephemeral=True)
-
-    @autoroom.command(name="button")
-    async def autoroom_button(self, ctx: commands.Context, button_key: str, emoji: str, name: str, style: str) -> None:
-        """Customize a button with emoji:name:buttonStyle format."""
-        autoroom_channel, _ = await self._get_autoroom_channel_and_info(ctx)
-        if not autoroom_channel:
-            return
-
-        style_map = {
-            "primary": discord.ButtonStyle.primary,
-            "secondary": discord.ButtonStyle.secondary,
-            "success": discord.ButtonStyle.success,
-            "danger": discord.ButtonStyle.danger,
-        }
-
-        if button_key not in await self.config.channel(autoroom_channel).buttons():
-            await ctx.send("Invalid button key.", ephemeral=True)
-            return
-
-        if style not in style_map:
-            await ctx.send("Invalid button style. Choose from: primary, secondary, success, danger.", ephemeral=True)
-            return
-
-        button_config = {
-            "emoji": emoji,
-            "name": name,
-            "style": style_map[style]
-        }
-
-        async with self.config.channel(autoroom_channel).buttons() as buttons:
-            buttons[button_key] = button_config
-
-        await ctx.send(f"Button {button_key} updated to {emoji}:{name}:{style}.", ephemeral=True)
+        await self.config.guild(ctx.guild).description.set(description)
+        await ctx.send(f"Description set to: {description}")
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
@@ -151,6 +129,10 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         if not channel or not isinstance(channel, discord.VoiceChannel):
             await interaction.response.send_message("Channel not found.", ephemeral=True)
+            return
+
+        if custom_id.startswith("info"):
+            await self.info(interaction, channel)
             return
 
         # Check if the user is the owner of the channel
@@ -189,6 +171,28 @@ class AutoRoomCommands(MixinMeta, ABC):
             await self.change_region(interaction, channel)
         elif custom_id.startswith("transfer"):
             await self.transfer_owner(interaction, channel)
+
+    async def info(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Provide information about the current voice channel."""
+        voice_channel = self._get_current_voice_channel(interaction.user)
+        if not voice_channel or voice_channel.id != channel.id:
+            await interaction.response.send_message("You must be in the voice channel to view its info.", ephemeral=True)
+            return
+
+        autoroom_info = await self.get_autoroom_info(channel)
+        owner_id = autoroom_info.get("owner")
+        owner = interaction.guild.get_member(owner_id)
+        owner_name = owner.display_name if owner else "None"
+
+        channel_age = datetime.datetime.utcnow() - channel.created_at
+        bitrate = channel.bitrate // 1000  # Convert to kbps
+
+        embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
+        embed.add_field(name="Owner", value=owner_name)
+        embed.add_field(name="Age", value=humanize_timedelta(timedelta=channel_age))
+        embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def allow(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Allow a user (or role) into your AutoRoom."""
