@@ -12,6 +12,7 @@ from .abc import MixinMeta
 from .pcx_lib import Perms, SettingDisplay, delete
 
 MAX_CHANNEL_NAME_LENGTH = 100
+MAX_BITRATE = 96  # Maximum bitrate in kbps
 
 class AutoRoomCommands(MixinMeta, ABC):
     """The autoroom command."""
@@ -86,17 +87,17 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     async def allow(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Allow a user (or role) into your AutoRoom."""
-        modal = AllowUserModal(self.bot, channel)
+        modal = AllowUserModal(self, channel)
         await interaction.response.send_modal(modal)
 
     async def deny(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Deny a user (or role) from accessing your AutoRoom."""
-        modal = DenyUserModal(self.bot, channel)
+        modal = DenyUserModal(self, channel)
         await interaction.response.send_modal(modal)
 
     async def bitrate(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Change the bitrate of your AutoRoom."""
-        modal = ChangeBitrateModal(self.bot, channel)
+        modal = ChangeBitrateModal(self, channel)
         await interaction.response.send_modal(modal)
 
     async def claim(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
@@ -107,8 +108,13 @@ class AutoRoomCommands(MixinMeta, ABC):
             return
 
         owner_id = autoroom_info.get("owner")
-        if owner_id and owner_id != interaction.user.id:
-            await interaction.response.send_message("This channel already has an owner.", ephemeral=True)
+        if owner_id:
+            owner = interaction.guild.get_member(owner_id)
+            owner_name = owner.display_name if owner else "Unknown"
+            await interaction.response.send_message(
+                f"{interaction.user.mention}, this voice channel is already owned by {owner_name} and cannot be claimed.",
+                ephemeral=True
+            )
             return
 
         await self.config.channel(channel).owner.set(interaction.user.id)
@@ -120,7 +126,7 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     async def name(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Change the name of your AutoRoom."""
-        modal = ChangeNameModal(self.bot, channel)
+        modal = ChangeNameModal(self, channel)
         await interaction.response.send_modal(modal)
 
     async def private(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
@@ -151,7 +157,7 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     async def users(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Change the user limit of your AutoRoom."""
-        modal = SetUserLimitModal(self.bot, channel)
+        modal = SetUserLimitModal(self, channel)
         await interaction.response.send_modal(modal)
 
     async def _process_allow_deny(self, interaction: discord.Interaction, action: str, channel: discord.VoiceChannel):
@@ -219,12 +225,32 @@ class AutoRoomCommands(MixinMeta, ABC):
         await delete(ctx.message, delay=10)
         await delete(hint, delay=10)
 
+    @staticmethod
+    def _get_autoroom_type(autoroom: discord.VoiceChannel, role: discord.Role) -> str:
+        """Get the type of access a role has in an AutoRoom (public, locked, private, etc)."""
+        view_channel = role.permissions.view_channel
+        connect = role.permissions.connect
+        if role in autoroom.overwrites:
+            overwrites_allow, overwrites_deny = autoroom.overwrites[role].pair()
+            if overwrites_allow.view_channel:
+                view_channel = True
+            if overwrites_allow.connect:
+                connect = True
+            if overwrites_deny.view_channel:
+                view_channel = False
+            if overwrites_deny.connect:
+                connect = False
+        if not view_channel and not connect:
+            return "private"
+        if view_channel and not connect:
+            return "locked"
+        return "public"
 
 # Modal Classes
 
 class AllowUserModal(discord.ui.Modal, title="Allow User/Role"):
-    def __init__(self, bot, channel):
-        self.bot = bot
+    def __init__(self, cog, channel):
+        self.cog = cog
         self.channel = channel
         super().__init__()
 
@@ -232,7 +258,7 @@ class AllowUserModal(discord.ui.Modal, title="Allow User/Role"):
 
     async def on_submit(self, interaction: discord.Interaction):
         user_input = self.user_id.value
-        user = await self.bot._get_user_from_input(interaction.guild, user_input)
+        user = await self.cog._get_user_from_input(interaction.guild, user_input)
         if user and self.channel:
             await self.channel.set_permissions(user, connect=True)
             await interaction.response.send_message(f"{user.display_name} has been allowed to join the channel.")
@@ -241,8 +267,8 @@ class AllowUserModal(discord.ui.Modal, title="Allow User/Role"):
 
 
 class DenyUserModal(discord.ui.Modal, title="Deny User/Role"):
-    def __init__(self, bot, channel):
-        self.bot = bot
+    def __init__(self, cog, channel):
+        self.cog = cog
         self.channel = channel
         super().__init__()
 
@@ -250,7 +276,7 @@ class DenyUserModal(discord.ui.Modal, title="Deny User/Role"):
 
     async def on_submit(self, interaction: discord.Interaction):
         user_input = self.user_id.value
-        user = await self.bot._get_user_from_input(interaction.guild, user_input)
+        user = await self.cog._get_user_from_input(interaction.guild, user_input)
         if user and self.channel:
             await self.channel.set_permissions(user, connect=False)
             await interaction.response.send_message(f"{user.display_name} has been denied from joining the channel.")
@@ -259,8 +285,8 @@ class DenyUserModal(discord.ui.Modal, title="Deny User/Role"):
 
 
 class ChangeBitrateModal(discord.ui.Modal, title="Change Bitrate"):
-    def __init__(self, bot, channel):
-        self.bot = bot
+    def __init__(self, cog, channel):
+        self.cog = cog
         self.channel = channel
         super().__init__()
 
@@ -268,14 +294,18 @@ class ChangeBitrateModal(discord.ui.Modal, title="Change Bitrate"):
 
     async def on_submit(self, interaction: discord.Interaction):
         bitrate_value = self.bitrate_value.value
+        if not bitrate_value.isdigit() or int(bitrate_value) > MAX_BITRATE:
+            await interaction.response.send_message(f"Invalid bitrate. Please enter a value between 8 and {MAX_BITRATE} kbps.", ephemeral=True)
+            return
+
         if self.channel:
             await self.channel.edit(bitrate=int(bitrate_value) * 1000)
             await interaction.response.send_message(f"Bitrate changed to {bitrate_value} kbps.")
 
 
 class ChangeNameModal(discord.ui.Modal, title="Change Channel Name"):
-    def __init__(self, bot, channel):
-        self.bot = bot
+    def __init__(self, cog, channel):
+        self.cog = cog
         self.channel = channel
         super().__init__()
 
@@ -289,8 +319,8 @@ class ChangeNameModal(discord.ui.Modal, title="Change Channel Name"):
 
 
 class SetUserLimitModal(discord.ui.Modal, title="Set User Limit"):
-    def __init__(self, bot, channel):
-        self.bot = bot
+    def __init__(self, cog, channel):
+        self.cog = cog
         self.channel = channel
         super().__init__()
 
@@ -298,6 +328,10 @@ class SetUserLimitModal(discord.ui.Modal, title="Set User Limit"):
 
     async def on_submit(self, interaction: discord.Interaction):
         user_limit_value = self.user_limit_value.value
+        if not user_limit_value.isdigit():
+            await interaction.response.send_message("Invalid user limit. Please enter a numeric value.", ephemeral=True)
+            return
+
         if self.channel:
             await self.channel.edit(user_limit=int(user_limit_value))
             await interaction.response.send_message(f"User limit set to {user_limit_value}.")
