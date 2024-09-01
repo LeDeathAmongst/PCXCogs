@@ -3,7 +3,7 @@ from abc import ABC
 from typing import Any, Optional
 
 import discord
-from redbot.core import commands, Config
+from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_timedelta
 
 from .abc import MixinMeta
@@ -51,13 +51,6 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-
-        # Register the configuration schema for the guild
-        default_guild = {
-            "control_panel_message": None,
-        }
-        self.config.register_guild(**default_guild)
 
     @staticmethod
     def parse_emoji(emoji_str):
@@ -73,13 +66,9 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     @commands.command(name="controlpanel")
     @commands.guild_only()
+    @commands.check(lambda ctx: ctx.author.id == ctx.guild.owner_id)
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
-        """Send the master control panel for the guild."""
-        existing_message_id = await self.config.guild(ctx.guild).control_panel_message()
-        if existing_message_id:
-            await ctx.send("A control panel already exists for this server. Please delete it first.")
-            return
-
+        """Send the master control panel for the guild. Only the server owner can use this command."""
         embed = discord.Embed(title="Master Control Panel", color=0x7289da)
 
         # Add a description with the button labels and emojis
@@ -103,26 +92,7 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         view = ControlPanelView(self)
 
-        message = await ctx.send(embed=embed, view=view)
-        await self.config.guild(ctx.guild).control_panel_message.set(message.id)
-
-    @commands.command(name="deletecontrolpanel")
-    @commands.guild_only()
-    async def delete_controlpanel(self, ctx: commands.Context) -> None:
-        """Delete the existing control panel for the guild."""
-        message_id = await self.config.guild(ctx.guild).control_panel_message()
-        if not message_id:
-            await ctx.send("No control panel exists for this server.")
-            return
-
-        try:
-            message = await ctx.channel.fetch_message(message_id)
-            await message.delete()
-            await ctx.send("Control panel deleted.")
-        except discord.NotFound:
-            await ctx.send("Control panel message not found. It may have already been deleted.")
-
-        await self.config.guild(ctx.guild).control_panel_message.clear()
+        await ctx.send(embed=embed, view=view)
 
     async def locked(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Lock your AutoRoom."""
