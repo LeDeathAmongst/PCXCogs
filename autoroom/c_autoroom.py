@@ -35,7 +35,7 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config = Config.get_conf(self, identifier=1234567890)
+        self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
         default_channel = {
             "allowed_users": [],
             "denied_users": [],
@@ -70,6 +70,26 @@ class AutoRoomCommands(MixinMeta, ABC):
         autoroom_channel, autoroom_info = await self._get_autoroom_channel_and_info(ctx)
         if not autoroom_channel or not autoroom_info:
             return
+
+        # Retrieve the description, defaulting to DEFAULT_DESCRIPTION if not set
+        description = await self.config.channel(autoroom_channel).description()
+        if not description:
+            description = DEFAULT_DESCRIPTION
+
+        buttons_config = await self.config.channel(autoroom_channel).buttons()
+
+        embed = discord.Embed(title=f"Control Panel for {autoroom_channel.name}", description=description, color=0x7289da)
+        view = discord.ui.View()
+
+        for key, button in buttons_config.items():
+            view.add_item(discord.ui.Button(
+                label=button["name"],
+                emoji=button["emoji"],
+                custom_id=f"{key}_{autoroom_channel.id}",
+                style=button["style"]
+            ))
+
+        await ctx.send(embed=embed, view=view, ephemeral=False)
 
         # Retrieve the description, defaulting to DEFAULT_DESCRIPTION if not set
         description = await self.config.channel(autoroom_channel).description()
