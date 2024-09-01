@@ -436,12 +436,15 @@ class RegionSelectView(discord.ui.View):
         self.cog = cog
         self.channel = channel
 
-        options = [discord.SelectOption(label=name, value=region) for name, region in REGION_OPTIONS]
+        # Set a default string value for "Automatic" instead of None
+        options = [discord.SelectOption(label=name, value=region or "automatic") for name, region in REGION_OPTIONS]
         self.select = discord.ui.Select(placeholder="Select Region", options=options)
         self.select.callback = self.on_select
         self.add_item(self.select)
 
     async def on_select(self, interaction: discord.Interaction):
         selected_region = self.select.values[0]
-        await self.channel.edit(rtc_region=selected_region)
-        await interaction.response.send_message(f"Region changed to {selected_region if selected_region else 'Automatic'}.", ephemeral=True)
+        # Use None if "automatic" is selected to represent the default region
+        rtc_region = None if selected_region == "automatic" else selected_region
+        await self.channel.edit(rtc_region=rtc_region)
+        await interaction.response.send_message(f"Region changed to {selected_region if rtc_region else 'Automatic'}.", ephemeral=True)
