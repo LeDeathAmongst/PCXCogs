@@ -14,7 +14,7 @@ from .pcx_lib import Perms, SettingDisplay, delete
 MAX_CHANNEL_NAME_LENGTH = 100
 MAX_BITRATE = 96  # Maximum bitrate in kbps
 
-DEFAULT_DESCRIPTION = (
+description = (
     "Use the buttons below to manage your channel.\n\n"
     "✅ **Allow**: Allow a user to join the channel.\n"
     "🔊 **Bitrate**: Change the channel's bitrate.\n"
