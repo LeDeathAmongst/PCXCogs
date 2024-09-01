@@ -29,6 +29,23 @@ DEFAULT_EMOJIS = {
     "info": "<:Information:1279848926383702056>"  # Info
 }
 
+REGION_OPTIONS = [
+    ("Automatic", None),
+    ("Brazil", "brazil"),
+    ("Hong Kong", "hongkong"),
+    ("India", "india"),
+    ("Japan", "japan"),
+    ("Rotterdam", "rotterdam"),
+    ("Russia", "russia"),
+    ("Singapore", "singapore"),
+    ("South Africa", "southafrica"),
+    ("Sydney", "sydney"),
+    ("US Central", "us-central"),
+    ("US East", "us-east"),
+    ("US South", "us-south"),
+    ("US West", "us-west"),
+]
+
 class AutoRoomCommands(MixinMeta, ABC):
     """The autoroom command."""
 
@@ -136,6 +153,11 @@ class AutoRoomCommands(MixinMeta, ABC):
         embed.add_field(name="Denied Users", value=denied_users_text)
 
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def change_region(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Change the region of the voice channel."""
+        view = RegionSelectView(self, channel)
+        await interaction.response.send_message("Select a region for the voice channel:", view=view, ephemeral=True)
 
     def _has_override_permissions(self, user: discord.Member, autoroom_info: dict) -> bool:
         """Check if the user has override permissions."""
@@ -406,3 +428,20 @@ class SetUserLimitModal(discord.ui.Modal, title="Set User Limit"):
             f"User limit set to {'Unlimited' if user_limit is None else str(user_limit) + ' members'}.",
             ephemeral=True
         )
+
+
+class RegionSelectView(discord.ui.View):
+    def __init__(self, cog, channel):
+        super().__init__()
+        self.cog = cog
+        self.channel = channel
+
+        options = [discord.SelectOption(label=name, value=region) for name, region in REGION_OPTIONS]
+        self.select = discord.ui.Select(placeholder="Select Region", options=options)
+        self.select.callback = self.on_select
+        self.add_item(self.select)
+
+    async def on_select(self, interaction: discord.Interaction):
+        selected_region = self.select.values[0]
+        await self.channel.edit(rtc_region=selected_region)
+        await interaction.response.send_message(f"Region changed to {selected_region if selected_region else 'Automatic'}.", ephemeral=True)
