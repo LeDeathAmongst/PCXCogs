@@ -47,20 +47,20 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         # Define fixed buttons
         buttons = {
-            "allow": {"emoji": "", "name": "Allow", "style": discord.ButtonStyle.primary},
-            "bitrate": {"emoji": "", "name": "Bitrate", "style": discord.ButtonStyle.primary},
-            "claim": {"emoji": "", "name": "Claim", "style": discord.ButtonStyle.primary},
-            "deny": {"emoji": "", "name": "Deny", "style": discord.ButtonStyle.primary},
-            "locked": {"emoji": "", "name": "Locked", "style": discord.ButtonStyle.primary},
+            "allow": {"emoji": "✅", "name": "Allow", "style": discord.ButtonStyle.primary},
+            "bitrate": {"emoji": "🎵", "name": "Bitrate", "style": discord.ButtonStyle.primary},
+            "claim": {"emoji": "🏆", "name": "Claim", "style": discord.ButtonStyle.primary},
+            "deny": {"emoji": "🚫", "name": "Deny", "style": discord.ButtonStyle.primary},
+            "locked": {"emoji": "🔒", "name": "Locked", "style": discord.ButtonStyle.primary},
             "unlock": {"emoji": "🔓", "name": "Unlock", "style": discord.ButtonStyle.primary},
-            "name": {"emoji": "", "name": "Name", "style": discord.ButtonStyle.primary},
-            "private": {"emoji": "", "name": "Private", "style": discord.ButtonStyle.primary},
-            "public": {"emoji": "", "name": "Public", "style": discord.ButtonStyle.primary},
-            "settings": {"emoji": "", "name": "Settings", "style": discord.ButtonStyle.primary},
-            "users": {"emoji": "", "name": "Users", "style": discord.ButtonStyle.primary},
-            "region": {"emoji": "", "name": "Region", "style": discord.ButtonStyle.primary},
-            "transfer": {"emoji": "", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
-            "info": {"emoji": "ℹ", "name": "Info", "style": discord.ButtonStyle.primary},
+            "name": {"emoji": "📝", "name": "Name", "style": discord.ButtonStyle.primary},
+            "private": {"emoji": "🔑", "name": "Private", "style": discord.ButtonStyle.primary},
+            "public": {"emoji": "🌐", "name": "Public", "style": discord.ButtonStyle.primary},
+            "settings": {"emoji": "⚙️", "name": "Settings", "style": discord.ButtonStyle.primary},
+            "users": {"emoji": "👥", "name": "Users", "style": discord.ButtonStyle.primary},
+            "region": {"emoji": "🌍", "name": "Region", "style": discord.ButtonStyle.primary},
+            "transfer": {"emoji": "🔄", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
+            "info": {"emoji": "ℹ️", "name": "Info", "style": discord.ButtonStyle.primary},
         }
 
         for key, button in buttons.items():
