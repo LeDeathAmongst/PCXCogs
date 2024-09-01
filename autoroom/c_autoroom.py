@@ -215,8 +215,24 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     async def change_region(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Change the voice region of your AutoRoom."""
-        regions = await self.bot.http.get_voice_regions()
-        options = [discord.SelectOption(label=region['name'], value=region['id']) for region in regions]
+        # Define fixed list of regions
+        regions = [
+            {"name": "Brazil", "id": "brazil"},
+            {"name": "Hong Kong", "id": "hongkong"},
+            {"name": "India", "id": "india"},
+            {"name": "Japan", "id": "japan"},
+            {"name": "Rotterdam", "id": "rotterdam"},
+            {"name": "Russia", "id": "russia"},
+            {"name": "Singapore", "id": "singapore"},
+            {"name": "South Africa", "id": "southafrica"},
+            {"name": "Sydney", "id": "sydney"},
+            {"name": "US Central", "id": "us-central"},
+            {"name": "US East", "id": "us-east"},
+            {"name": "US South", "id": "us-south"},
+            {"name": "US West", "id": "us-west"},
+        ]
+
+        options = [discord.SelectOption(label=region["name"], value=region["id"]) for region in regions]
         select = discord.ui.Select(placeholder="Select a voice region", options=options)
 
         async def select_callback(select_interaction: discord.Interaction):
