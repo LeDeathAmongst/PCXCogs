@@ -1,5 +1,3 @@
-"""The AutoRoom Command"""
-
 import datetime
 from abc import ABC
 from typing import Any, Optional
@@ -38,6 +36,42 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+    @commands.command(name="controlpanel")
+    @commands.guild_only()
+    async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
+        """Send the master control panel for the guild."""
+        # Use the default description
+        embed = discord.Embed(title="Master Control Panel", description=DEFAULT_DESCRIPTION, color=0x7289da)
+        view = discord.ui.View()
+
+        # Define fixed buttons
+        buttons = {
+            "allow": {"emoji": "", "name": "Allow", "style": discord.ButtonStyle.primary},
+            "bitrate": {"emoji": "", "name": "Bitrate", "style": discord.ButtonStyle.primary},
+            "claim": {"emoji": "", "name": "Claim", "style": discord.ButtonStyle.primary},
+            "deny": {"emoji": "", "name": "Deny", "style": discord.ButtonStyle.primary},
+            "locked": {"emoji": "", "name": "Locked", "style": discord.ButtonStyle.primary},
+            "unlock": {"emoji": "🔓", "name": "Unlock", "style": discord.ButtonStyle.primary},
+            "name": {"emoji": "", "name": "Name", "style": discord.ButtonStyle.primary},
+            "private": {"emoji": "", "name": "Private", "style": discord.ButtonStyle.primary},
+            "public": {"emoji": "", "name": "Public", "style": discord.ButtonStyle.primary},
+            "settings": {"emoji": "", "name": "Settings", "style": discord.ButtonStyle.primary},
+            "users": {"emoji": "", "name": "Users", "style": discord.ButtonStyle.primary},
+            "region": {"emoji": "", "name": "Region", "style": discord.ButtonStyle.primary},
+            "transfer": {"emoji": "", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
+            "info": {"emoji": "ℹ", "name": "Info", "style": discord.ButtonStyle.primary},
+        }
+
+        for key, button in buttons.items():
+            view.add_item(discord.ui.Button(
+                label=button["name"],
+                emoji=button["emoji"],
+                custom_id=key,
+                style=button["style"]
+            ))
+
+        await ctx.send(embed=embed, view=view)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
