@@ -26,7 +26,8 @@ DEFAULT_EMOJIS = {
     "region": "<:Servers:1279848940786810891>",  # Servers
     "claim": "<:Crown:1279848977658810451>",  # Crown
     "transfer": "<:Person_With_Rotation:1279848936752021504>",  # Person_With_Rotation
-    "info": "<:Information:1279848926383702056>"  # Info
+    "info": "<:Information:1279848926383702056>",  # Info
+    "delete": "<:TrashCan:1279875131136806993>"  # TrashCan
 }
 
 REGION_OPTIONS = [
@@ -86,7 +87,8 @@ class AutoRoomCommands(MixinMeta, ABC):
             f"{DEFAULT_EMOJIS['region']} Region",
             f"{DEFAULT_EMOJIS['claim']} Claim",
             f"{DEFAULT_EMOJIS['transfer']} Transfer",
-            f"{DEFAULT_EMOJIS['info']} Info"
+            f"{DEFAULT_EMOJIS['info']} Info",
+            f"{DEFAULT_EMOJIS['delete']} Delete Channel"
         ])
         embed.description = description
 
@@ -98,7 +100,8 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Lock your AutoRoom."""
         try:
             await interaction.response.defer(ephemeral=True)
-            await self._process_allow_deny(interaction, "lock", channel=channel)
+            view = ConfirmationView(self, interaction, channel, "lock", "Lock the room?")
+            await interaction.followup.send("Are you sure you want to lock the room?", view=view, ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -106,7 +109,8 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Unlock your AutoRoom."""
         try:
             await interaction.response.defer(ephemeral=True)
-            await self._process_allow_deny(interaction, "allow", channel=channel)
+            view = ConfirmationView(self, interaction, channel, "unlock", "Unlock the room?")
+            await interaction.followup.send("Are you sure you want to unlock the room?", view=view, ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -114,8 +118,8 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Make the AutoRoom private."""
         try:
             await interaction.response.defer(ephemeral=True)
-            await channel.set_permissions(interaction.guild.default_role, view_channel=False)
-            await interaction.followup.send("The AutoRoom is now private.", ephemeral=True)
+            view = ConfirmationView(self, interaction, channel, "private", "Make the room private?")
+            await interaction.followup.send("Are you sure you want to make the room private?", view=view, ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -123,8 +127,8 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Make the AutoRoom public."""
         try:
             await interaction.response.defer(ephemeral=True)
-            await channel.set_permissions(interaction.guild.default_role, view_channel=True)
-            await interaction.followup.send("The AutoRoom is now public.", ephemeral=True)
+            view = ConfirmationView(self, interaction, channel, "public", "Make the room public?")
+            await interaction.followup.send("Are you sure you want to make the room public?", view=view, ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -148,6 +152,24 @@ class AutoRoomCommands(MixinMeta, ABC):
         except Exception as e:
             await self.handle_error(interaction, e)
 
+    async def delete_channel(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Delete the voice channel."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            view = ConfirmationView(self, interaction, channel, "delete", "Delete the channel?")
+            await interaction.followup.send("Are you sure you want to delete the channel?", view=view, ephemeral=True)
+        except Exception as e:
+            await self.handle_error(interaction, e)
+
+    async def transfer_ownership(self, interaction: discord.Interaction, channel: discord.VoiceChannel, new_owner: discord.Member):
+        """Transfer ownership of the channel with confirmation from the new owner."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            view = TransferConfirmationView(self, interaction, channel, new_owner)
+            await interaction.followup.send(f"{new_owner.display_name}, do you accept ownership of the channel?", view=view, ephemeral=True)
+        except Exception as e:
+            await self.handle_error(interaction, e)
+
     async def _process_allow_deny(self, interaction: discord.Interaction, action: str, channel: discord.VoiceChannel):
         """Process allowing or denying users/roles access to the AutoRoom."""
         try:
@@ -163,6 +185,22 @@ class AutoRoomCommands(MixinMeta, ABC):
                 # Lock the room: visible but no one can join
                 await channel.set_permissions(interaction.guild.default_role, connect=False)
                 await interaction.followup.send("The AutoRoom is now locked.", ephemeral=True)
+            elif action == "unlock":
+                # Unlock the room: visible and joinable
+                await channel.set_permissions(interaction.guild.default_role, connect=True)
+                await interaction.followup.send("The AutoRoom is now unlocked.", ephemeral=True)
+            elif action == "private":
+                # Make the room private
+                await channel.set_permissions(interaction.guild.default_role, view_channel=False)
+                await interaction.followup.send("The AutoRoom is now private.", ephemeral=True)
+            elif action == "public":
+                # Make the room public
+                await channel.set_permissions(interaction.guild.default_role, view_channel=True)
+                await interaction.followup.send("The AutoRoom is now public.", ephemeral=True)
+            elif action == "delete":
+                # Delete the channel
+                await channel.delete()
+                await interaction.followup.send("The channel has been deleted.", ephemeral=True)
             else:
                 await interaction.followup.send("Invalid action.", ephemeral=True)
         except Exception as e:
@@ -380,6 +418,67 @@ class ControlPanelView(discord.ui.View):
         if voice_channel:
             await self.cog.info(interaction, voice_channel)
 
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["delete"], custom_id="delete")
+    async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
+            await self.cog.delete_channel(interaction, voice_channel)
+
+# Confirmation View for Actions
+
+class ConfirmationView(discord.ui.View):
+    def __init__(self, cog, interaction, channel, action, prompt):
+        super().__init__()
+        self.cog = cog
+        self.interaction = interaction
+        self.channel = channel
+        self.action = action
+        self.prompt = prompt
+
+    @discord.ui.button(label="Yes", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message("You cannot confirm this action.", ephemeral=True)
+            return
+        await self.cog._process_allow_deny(self.interaction, self.action, self.channel)
+        self.stop()
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.interaction.user:
+            await interaction.response.send_message("You cannot cancel this action.", ephemeral=True)
+            return
+        await interaction.response.send_message(f"{self.prompt} cancelled.", ephemeral=True)
+        self.stop()
+
+# Transfer Confirmation View
+
+class TransferConfirmationView(discord.ui.View):
+    def __init__(self, cog, interaction, channel, new_owner):
+        super().__init__()
+        self.cog = cog
+        self.interaction = interaction
+        self.channel = channel
+        self.new_owner = new_owner
+
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success)
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.new_owner:
+            await interaction.response.send_message("You cannot accept this transfer.", ephemeral=True)
+            return
+        await self.cog.config.channel(self.channel).owner.set(self.new_owner.id)
+        await self.channel.edit(name=f"{self.new_owner.display_name}'s Channel")
+        await interaction.response.send_message(f"Ownership transferred to {self.new_owner.display_name}.", ephemeral=True)
+        self.stop()
+
+    @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
+    async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.new_owner:
+            await interaction.response.send_message("You cannot decline this transfer.", ephemeral=True)
+            return
+        await interaction.response.send_message("Transfer declined.", ephemeral=True)
+        self.stop()
+
 # Modal Classes
 
 class AllowModal(discord.ui.Modal, title="Allow User or Role"):
@@ -521,9 +620,7 @@ class TransferOwnershipModal(discord.ui.Modal, title="Transfer Ownership"):
             new_owner = await self.cog._get_user_from_input(interaction.guild, new_owner_input)
 
             if new_owner and new_owner in self.channel.members:
-                await self.cog.config.channel(self.channel).owner.set(new_owner.id)
-                await self.channel.edit(name=f"{new_owner.display_name}'s Channel")
-                await interaction.followup.send(f"Ownership transferred to {new_owner.display_name}.", ephemeral=True)
+                await self.cog.transfer_ownership(interaction, self.channel, new_owner)
             else:
                 await interaction.followup.send("User not found or not in the channel. Please enter a valid user ID or mention.", ephemeral=True)
         except Exception as e:
