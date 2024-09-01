@@ -179,7 +179,8 @@ class AutoRoomCommands(MixinMeta, ABC):
                 await interaction.followup.send(f"Ownership request sent to {new_owner.display_name}.", ephemeral=True)
             except discord.Forbidden:
                 await interaction.followup.send(
-                    f"{new_owner.mention}, you have been requested to take ownership of the voice channel. Please check your DM settings.",
+                    f"{new_owner.mention}, you have been requested to take ownership of the voice channel.",
+                    view=view,
                     ephemeral=False
                 )
         except Exception as e:
