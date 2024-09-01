@@ -3,8 +3,6 @@ from abc import ABC
 from typing import Any, Optional
 
 import discord
-from PIL import Image, ImageDraw, ImageFont
-import io
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_timedelta
 
@@ -34,35 +32,6 @@ DEFAULT_EMOJIS = {
 class AutoRoomCommands(MixinMeta, ABC):
     """The autoroom command."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.image_path = "control_panel_image.png"
-
-    def generate_image(self):
-        """Generate an image with button names and emojis."""
-        width, height = 700, 250  # Adjusted height for more buttons
-        image = Image.new('RGB', (width, height), color=(255, 248, 240))
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default()
-
-        # Define button labels
-        labels = [
-            ("Lock", DEFAULT_EMOJIS["lock"]), ("Unlock", DEFAULT_EMOJIS["unlock"]), ("Limit", DEFAULT_EMOJIS["limit"]), ("Hide", DEFAULT_EMOJIS["hide"]),
-            ("Unhide", DEFAULT_EMOJIS["unhide"]), ("Invite", DEFAULT_EMOJIS["invite"]), ("Ban", DEFAULT_EMOJIS["ban"]), ("Permit", DEFAULT_EMOJIS["permit"]),
-            ("Rename", DEFAULT_EMOJIS["rename"]), ("Bitrate", DEFAULT_EMOJIS["bitrate"]), ("Region", DEFAULT_EMOJIS["region"]), ("Claim", DEFAULT_EMOJIS["claim"]),
-            ("Transfer", DEFAULT_EMOJIS["transfer"]), ("Info", DEFAULT_EMOJIS["info"])
-        ]
-
-        # Draw labels on the image
-        for i, (name, emoji) in enumerate(labels):
-            x = (i % 4) * 175 + 20
-            y = (i // 4) * 50 + 20
-            draw.rectangle([(x, y), (x + 150, y + 40)], outline=(128, 0, 0), width=2)
-            draw.text((x + 10, y + 10), f"{emoji} {name}", fill=(0, 0, 0), font=font)
-
-        # Save the image locally
-        image.save(self.image_path)
-
     @staticmethod
     def parse_emoji(emoji_str):
         """Parse the emoji string and return a discord.PartialEmoji."""
@@ -79,10 +48,26 @@ class AutoRoomCommands(MixinMeta, ABC):
     @commands.guild_only()
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
         """Send the master control panel for the guild."""
-        self.generate_image()
         embed = discord.Embed(title="Master Control Panel", color=0x7289da)
-        file = discord.File(self.image_path, filename="control_panel_image.png")
-        embed.set_image(url=f"attachment://control_panel_image.png")
+
+        # Add a description with the button labels and emojis
+        description = "\n".join([
+            f"{DEFAULT_EMOJIS['lock']} Lock",
+            f"{DEFAULT_EMOJIS['unlock']} Unlock",
+            f"{DEFAULT_EMOJIS['limit']} Limit",
+            f"{DEFAULT_EMOJIS['hide']} Hide",
+            f"{DEFAULT_EMOJIS['unhide']} Unhide",
+            f"{DEFAULT_EMOJIS['invite']} Invite",
+            f"{DEFAULT_EMOJIS['ban']} Ban",
+            f"{DEFAULT_EMOJIS['permit']} Permit",
+            f"{DEFAULT_EMOJIS['rename']} Rename",
+            f"{DEFAULT_EMOJIS['bitrate']} Bitrate",
+            f"{DEFAULT_EMOJIS['region']} Region",
+            f"{DEFAULT_EMOJIS['claim']} Claim",
+            f"{DEFAULT_EMOJIS['transfer']} Transfer",
+            f"{DEFAULT_EMOJIS['info']} Info"
+        ])
+        embed.description = description
 
         view = discord.ui.View()
 
@@ -110,7 +95,7 @@ class AutoRoomCommands(MixinMeta, ABC):
                     custom_id=button_name
                 ))
 
-        await ctx.send(embed=embed, file=file, view=view)
+        await ctx.send(embed=embed, view=view)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
@@ -170,7 +155,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         elif custom_id == "claim":
             await self.claim(interaction, voice_channel)
         elif custom_id == "transfer":
-            await self.show_transfer_owner_menu(interaction, voice_channel)
+            await interaction.response.send_modal(TransferOwnershipModal(self, voice_channel))
         elif custom_id == "info":
             await self.info(interaction, voice_channel)
 
@@ -198,31 +183,6 @@ class AutoRoomCommands(MixinMeta, ABC):
             await interaction.followup.send("The AutoRoom is now locked.", ephemeral=True)
         else:
             await interaction.followup.send("Invalid action.", ephemeral=True)
-
-    async def show_transfer_owner_menu(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Show a dropdown menu to transfer ownership."""
-        options = [
-            discord.SelectOption(label=member.display_name, value=str(member.id))
-            for member in channel.members if not member.bot
-        ]
-
-        if not options:
-            await interaction.response.send_message("No available members to transfer ownership to.", ephemeral=True)
-            return
-
-        select = discord.ui.Select(placeholder="Select a new owner", options=options)
-
-        async def select_callback(select_interaction: discord.Interaction):
-            new_owner_id = int(select.values[0])
-            new_owner = interaction.guild.get_member(new_owner_id)
-            await self.config.channel(channel).owner.set(new_owner_id)
-            await channel.edit(name=f"{new_owner.display_name}'s Channel")
-            await select_interaction.response.send_message(f"Ownership transferred to {new_owner.display_name}.", ephemeral=True)
-
-        select.callback = select_callback
-        view = discord.ui.View()
-        view.add_item(select)
-        await interaction.response.send_message("Select a new owner from the list:", view=view, ephemeral=True)
 
     async def info(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Provide information about the current voice channel."""
@@ -399,6 +359,26 @@ class RequestJoinModal(discord.ui.Modal, title="Request User to Join"):
             await interaction.response.send_message(f"Request sent to {user.display_name}.", ephemeral=True)
         else:
             await interaction.response.send_message("User not found. Please enter a valid user ID or username.", ephemeral=True)
+
+
+class TransferOwnershipModal(discord.ui.Modal, title="Transfer Ownership"):
+    def __init__(self, cog, channel):
+        self.cog = cog
+        self.channel = channel
+        super().__init__()
+
+    new_owner_input = discord.ui.TextInput(label="New Owner ID or Mention", custom_id="new_owner_input", style=discord.TextStyle.short)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        new_owner_input = self.new_owner_input.value
+        new_owner = await self.cog._get_user_from_input(interaction.guild, new_owner_input)
+
+        if new_owner and new_owner in self.channel.members:
+            await self.cog.config.channel(self.channel).owner.set(new_owner.id)
+            await self.channel.edit(name=f"{new_owner.display_name}'s Channel")
+            await interaction.response.send_message(f"Ownership transferred to {new_owner.display_name}.", ephemeral=True)
+        else:
+            await interaction.response.send_message("User not found or not in the channel. Please enter a valid user ID or mention.", ephemeral=True)
 
 
 class SetUserLimitView(discord.ui.View):
