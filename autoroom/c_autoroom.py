@@ -3,6 +3,8 @@ from abc import ABC
 from typing import Any, Optional
 
 import discord
+from PIL import Image, ImageDraw, ImageFont
+import io
 from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_timedelta
 
@@ -12,62 +14,84 @@ MAX_CHANNEL_NAME_LENGTH = 100
 MAX_BITRATE = 96  # Maximum bitrate in kbps
 DEFAULT_REGION = "us-central"  # Set your preferred default region here
 
-DEFAULT_DESCRIPTION = (
-    "Use the buttons below to manage your channel.\n\n"
-    " **Allow**: Allow a user to join the channel.\n"
-    " **Bitrate**: Change the channel's bitrate.\n"
-    " **Claim**: Claim ownership of the channel.\n"
-    " **Deny**: Deny a user access to the channel.\n"
-    " **Locked**: Lock the channel (no one can join).\n"
-    " **Unlock**: Unlock the channel (everyone can join).\n"
-    " **Name**: Change the channel's name.\n"
-    " **Private**: Make the channel private.\n"
-    " **Public**: Make the channel public.\n"
-    " **Users**: Set a user limit for the channel.\n"
-    " **Region**: Change the voice region of the channel.\n"
-    " **Transfer Owner**: Transfer channel ownership to another user.\n"
-    "ℹ **Info**: View information about the current voice channel."
-)
-
 class AutoRoomCommands(MixinMeta, ABC):
     """The autoroom command."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.image_path = "control_panel_image.png"
+        self.generate_image()
+
+    def generate_image(self):
+        """Generate an image with button names and emojis."""
+        width, height = 700, 200
+        image = Image.new('RGB', (width, height), color=(255, 248, 240))
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default()
+
+        # Define button labels and emojis
+        labels = [
+            ("Lock", "🔒"), ("Unlock", "🔓"), ("Limit", "➖"), ("Hide", "🙈"),
+            ("Unhide", "🙉"), ("Invite", "📩"), ("Ban", "🚫"), ("Permit", "✅"),
+            ("Rename", "✏️"), ("Bitrate", "🎚 ️"), ("Region", "🌍"), ("Claim", "🏷 ️"),
+            ("Transfer", "🔄")
+        ]
+
+        # Draw labels on the image
+        for i, (name, emoji) in enumerate(labels):
+            x = (i % 4) * 175 + 20
+            y = (i // 4) * 50 + 20
+            draw.rectangle([(x, y), (x + 150, y + 40)], outline=(128, 0, 0), width=2)
+            draw.text((x + 10, y + 10), f"{emoji} {name}", fill=(0, 0, 0), font=font)
+
+        # Save the image locally
+        image.save(self.image_path)
 
     @commands.command(name="controlpanel")
     @commands.guild_only()
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
         """Send the master control panel for the guild."""
-        embed = discord.Embed(title="Master Control Panel", description=DEFAULT_DESCRIPTION, color=0x7289da)
+        embed = discord.Embed(title="Master Control Panel", color=0x7289da)
+        file = discord.File(self.image_path, filename="control_panel_image.png")
+        embed.set_image(url=f"attachment://control_panel_image.png")
+
         view = discord.ui.View()
 
-        # Define fixed buttons with appropriate emojis
+        # Define buttons with emojis
         buttons = {
-            "allow": {"emoji": "", "name": "Allow", "style": discord.ButtonStyle.primary},
-            "bitrate": {"emoji": "", "name": "Bitrate", "style": discord.ButtonStyle.primary},
-            "claim": {"emoji": "", "name": "Claim", "style": discord.ButtonStyle.primary},
-            "deny": {"emoji": "", "name": "Deny", "style": discord.ButtonStyle.primary},
-            "locked": {"emoji": "", "name": "Locked", "style": discord.ButtonStyle.primary},
-            "unlock": {"emoji": "", "name": "Unlock", "style": discord.ButtonStyle.primary},
-            "name": {"emoji": "", "name": "Name", "style": discord.ButtonStyle.primary},
-            "private": {"emoji": "", "name": "Private", "style": discord.ButtonStyle.primary},
-            "public": {"emoji": "", "name": "Public", "style": discord.ButtonStyle.primary},
-            "users": {"emoji": "", "name": "Users", "style": discord.ButtonStyle.primary},
-            "region": {"emoji": "", "name": "Region", "style": discord.ButtonStyle.primary},
-            "transfer": {"emoji": "", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
-            "info": {"emoji": "ℹ", "name": "Info", "style": discord.ButtonStyle.primary},
+            "lock": "🔒",
+            "unlock": "🔓",
+            "limit": "➖",
+            "hide": "🙈",
+            "unhide": "🙉",
+            "invite": "📩",
+            "ban": "🚫",
+            "permit": "✅",
+            "rename": "✏️",
+            "bitrate": "🎚 ️",
+            "region": "🌍",
+            "claim": "🏷 ️",
+            "transfer": "🔄"
         }
 
-        for key, button in buttons.items():
-            view.add_item(discord.ui.Button(
-                label=button["name"],
-                emoji=button["emoji"],
-                custom_id=key,
-                style=button["style"]
-            ))
+        # Add buttons to the view in the specified order
+        button_order = [
+            ["lock", "unlock", "limit", "hide"],
+            ["unhide", "invite", "ban", "permit"],
+            ["rename", "bitrate", "region", "claim"],
+            ["transfer"]
+        ]
 
-        await ctx.send(embed=embed, view=view)
+        for row in button_order:
+            for button_name in row:
+                view.add_item(discord.ui.Button(
+                    style=discord.ButtonStyle.primary,
+                    label="",
+                    emoji=buttons[button_name],
+                    custom_id=button_name
+                ))
+
+        await ctx.send(embed=embed, file=file, view=view)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
@@ -101,72 +125,37 @@ class AutoRoomCommands(MixinMeta, ABC):
         await interaction.response.defer(ephemeral=True)
 
         # Handle the interaction
-        if custom_id == "allow":
-            await interaction.response.send_modal(AllowModal(self, voice_channel))
-        elif custom_id == "bitrate":
-            await interaction.response.send_modal(ChangeBitrateModal(self, voice_channel))
-        elif custom_id == "claim":
-            await self.claim(interaction, voice_channel)
-        elif custom_id == "deny":
-            await interaction.response.send_modal(DenyModal(self, voice_channel))
-        elif custom_id == "locked":
+        if custom_id == "lock":
             await self.locked(interaction, voice_channel)
         elif custom_id == "unlock":
             await self.unlock(interaction, voice_channel)
-        elif custom_id == "name":
-            await interaction.response.send_modal(ChangeNameModal(self, voice_channel))
-        elif custom_id == "private":
-            await self.private(interaction, voice_channel)
-        elif custom_id == "public":
-            await self.public(interaction, voice_channel)
-        elif custom_id == "users":
+        elif custom_id == "limit":
             view = SetUserLimitView(self, voice_channel)
             await interaction.followup.send("Select a user limit:", view=view, ephemeral=True)
+        elif custom_id == "hide":
+            await self.private(interaction, voice_channel)
+        elif custom_id == "unhide":
+            await self.public(interaction, voice_channel)
+        elif custom_id == "invite":
+            await interaction.response.send_modal(AllowModal(self, voice_channel))
+        elif custom_id == "ban":
+            await interaction.response.send_modal(DenyModal(self, voice_channel))
+        elif custom_id == "permit":
+            await interaction.response.send_modal(AllowModal(self, voice_channel))
+        elif custom_id == "rename":
+            await interaction.response.send_modal(ChangeNameModal(self, voice_channel))
+        elif custom_id == "bitrate":
+            await interaction.response.send_modal(ChangeBitrateModal(self, voice_channel))
         elif custom_id == "region":
             await self.change_region(interaction, voice_channel)
+        elif custom_id == "claim":
+            await self.claim(interaction, voice_channel)
         elif custom_id == "transfer":
             await self.show_transfer_owner_menu(interaction, voice_channel)
-        elif custom_id == "info":
-            await self.info(interaction, voice_channel)
 
-    async def info(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Provide information about the current voice channel."""
-        autoroom_info = await self.get_autoroom_info(channel)
-        owner_id = autoroom_info.get("owner")
-        owner = interaction.guild.get_member(owner_id)
-        owner_name = owner.display_name if owner else "None"
-        owner_mention = owner.mention if owner else "None"
-
-        # Convert channel.created_at to naive datetime for subtraction
-        channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
-        bitrate = channel.bitrate // 1000  # Convert to kbps
-        user_limit = channel.user_limit or "Unlimited"
-        rtc_region = channel.rtc_region or "Automatic"
-
-        # Determine allowed and denied users
-        allowed_users = []
-        denied_users = []
-        for target, overwrite in channel.overwrites.items():
-            if isinstance(target, discord.Member):
-                if overwrite.connect is True:
-                    allowed_users.append(target.mention)
-                elif overwrite.connect is False:
-                    denied_users.append(target.mention)
-
-        allowed_users_text = ", ".join(allowed_users) if allowed_users else "No One"
-        denied_users_text = ", ".join(denied_users) if denied_users else "No One"
-
-        embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
-        embed.add_field(name="Owner", value=f"{owner_name} ({owner_mention})")
-        embed.add_field(name="Age", value=humanize_timedelta(timedelta=channel_age))
-        embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
-        embed.add_field(name="User Limit", value=user_limit)
-        embed.add_field(name="Region", value=rtc_region)
-        embed.add_field(name="Private", value="Yes" if self._get_autoroom_type(channel, interaction.guild.default_role) == "private" else "No")
-        embed.add_field(name="Allowed Users", value=allowed_users_text)
-        embed.add_field(name="Denied Users", value=denied_users_text)
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
+    async def locked(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Lock your AutoRoom."""
+        await self._process_allow_deny(interaction, "lock", channel=channel)
 
     async def unlock(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Unlock your AutoRoom."""
