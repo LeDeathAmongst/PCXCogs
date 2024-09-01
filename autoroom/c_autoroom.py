@@ -14,7 +14,7 @@ from .pcx_lib import Perms, SettingDisplay, delete
 MAX_CHANNEL_NAME_LENGTH = 100
 MAX_BITRATE = 96  # Maximum bitrate in kbps
 
-description = (
+DEFAULT_DESCRIPTION = (
     "Use the buttons below to manage your channel.\n\n"
     "✅ **Allow**: Allow a user to join the channel.\n"
     "🔊 **Bitrate**: Change the channel's bitrate.\n"
@@ -43,21 +43,7 @@ class AutoRoomCommands(MixinMeta, ABC):
             "denied_users": [],
             "allowed_roles": [],
             "denied_roles": [],
-            "description": (
-                "Use the buttons below to manage your channel.\n\n"
-                "✅ **Allow**: Allow a user to join the channel.\n"
-                "🔊 **Bitrate**: Change the channel's bitrate.\n"
-                "👑 **Claim**: Claim ownership of the channel.\n"
-                "❌ **Deny**: Deny a user access to the channel.\n"
-                "🔒 **Locked**: Lock the channel (no one can join).\n"
-                "✏️ **Name**: Change the channel's name.\n"
-                "🔐 **Private**: Make the channel private.\n"
-                "🌐 **Public**: Make the channel public.\n"
-                "⚙️ **Settings**: View current channel settings.\n"
-                "👥 **Users**: Set a user limit for the channel.\n"
-                "🌍 **Region**: Change the voice region of the channel.\n"
-                "🔄 **Transfer Owner**: Transfer channel ownership to another user."
-            ),
+            "description": "",  # Initialize with an empty string
             "buttons": {
                 "allow": {"emoji": "✅", "name": "Allow", "style": discord.ButtonStyle.primary},
                 "bitrate": {"emoji": "🔊", "name": "Bitrate", "style": discord.ButtonStyle.primary},
@@ -76,6 +62,11 @@ class AutoRoomCommands(MixinMeta, ABC):
         # Register the default settings for channels
         self.config.register_channel(**default_channel)
 
+    async def get_description(self, channel: discord.VoiceChannel) -> str:
+        """Retrieve the description for the channel, defaulting if not set."""
+        description = await self.config.channel(channel).description()
+        return description if description else DEFAULT_DESCRIPTION
+
     @commands.group()
     @commands.guild_only()
     async def autoroom(self, ctx: commands.Context) -> None:
@@ -88,11 +79,8 @@ class AutoRoomCommands(MixinMeta, ABC):
         if not autoroom_channel or not autoroom_info:
             return
 
-        # Retrieve the description, defaulting to DEFAULT_DESCRIPTION if not set
-        description = await self.config.channel(autoroom_channel).description()
-        if not description:
-            description = DEFAULT_DESCRIPTION
-
+        # Use the get_description method to retrieve the description
+        description = await self.get_description(autoroom_channel)
         buttons_config = await self.config.channel(autoroom_channel).buttons()
 
         embed = discord.Embed(title=f"Control Panel for {autoroom_channel.name}", description=description, color=0x7289da)
@@ -106,7 +94,7 @@ class AutoRoomCommands(MixinMeta, ABC):
                 style=button["style"]
             ))
 
-        await ctx.send(embed=embed, view=view, ephemeral=False)
+        await ctx.send(embed=embed, view=view, ephemeral=True)
 
     @autoroom.command(name="description")
     async def autoroom_description(self, ctx: commands.Context, *, description: str) -> None:
