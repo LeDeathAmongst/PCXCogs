@@ -23,7 +23,6 @@ DEFAULT_DESCRIPTION = (
     " **Name**: Change the channel's name.\n"
     " **Private**: Make the channel private.\n"
     " **Public**: Make the channel public.\n"
-    " **Settings**: View current channel settings.\n"
     " **Users**: Set a user limit for the channel.\n"
     " **Region**: Change the voice region of the channel.\n"
     " **Transfer Owner**: Transfer channel ownership to another user.\n"
@@ -45,20 +44,19 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         # Define fixed buttons with appropriate emojis
         buttons = {
-            "allow": {"emoji": "✅", "name": "Allow", "style": discord.ButtonStyle.primary},
-            "bitrate": {"emoji": "🎵", "name": "Bitrate", "style": discord.ButtonStyle.primary},
-            "claim": {"emoji": "🏆", "name": "Claim", "style": discord.ButtonStyle.primary},
-            "deny": {"emoji": "🚫", "name": "Deny", "style": discord.ButtonStyle.primary},
-            "locked": {"emoji": "🔒", "name": "Locked", "style": discord.ButtonStyle.primary},
-            "unlock": {"emoji": "🔓", "name": "Unlock", "style": discord.ButtonStyle.primary},
-            "name": {"emoji": "📝", "name": "Name", "style": discord.ButtonStyle.primary},
-            "private": {"emoji": "🔑", "name": "Private", "style": discord.ButtonStyle.primary},
-            "public": {"emoji": "🌐", "name": "Public", "style": discord.ButtonStyle.primary},
-            "settings": {"emoji": "⚙️", "name": "Settings", "style": discord.ButtonStyle.primary},
-            "users": {"emoji": "👥", "name": "Users", "style": discord.ButtonStyle.primary},
-            "region": {"emoji": "🌍", "name": "Region", "style": discord.ButtonStyle.primary},
-            "transfer": {"emoji": "🔄", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
-            "info": {"emoji": "ℹ️", "name": "Info", "style": discord.ButtonStyle.primary},
+            "allow": {"emoji": "", "name": "Allow", "style": discord.ButtonStyle.primary},
+            "bitrate": {"emoji": "", "name": "Bitrate", "style": discord.ButtonStyle.primary},
+            "claim": {"emoji": "", "name": "Claim", "style": discord.ButtonStyle.primary},
+            "deny": {"emoji": "", "name": "Deny", "style": discord.ButtonStyle.primary},
+            "locked": {"emoji": "", "name": "Locked", "style": discord.ButtonStyle.primary},
+            "unlock": {"emoji": "", "name": "Unlock", "style": discord.ButtonStyle.primary},
+            "name": {"emoji": "", "name": "Name", "style": discord.ButtonStyle.primary},
+            "private": {"emoji": "", "name": "Private", "style": discord.ButtonStyle.primary},
+            "public": {"emoji": "", "name": "Public", "style": discord.ButtonStyle.primary},
+            "users": {"emoji": "", "name": "Users", "style": discord.ButtonStyle.primary},
+            "region": {"emoji": "", "name": "Region", "style": discord.ButtonStyle.primary},
+            "transfer": {"emoji": "", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
+            "info": {"emoji": "ℹ", "name": "Info", "style": discord.ButtonStyle.primary},
         }
 
         for key, button in buttons.items():
@@ -121,8 +119,6 @@ class AutoRoomCommands(MixinMeta, ABC):
             await self.private(interaction, voice_channel)
         elif custom_id == "public":
             await self.public(interaction, voice_channel)
-        elif custom_id == "settings":
-            await self.autoroom_settings(interaction, voice_channel)
         elif custom_id == "users":
             view = SetUserLimitView(self, voice_channel)
             await interaction.followup.send("Select a user limit:", view=view, ephemeral=True)
@@ -171,30 +167,6 @@ class AutoRoomCommands(MixinMeta, ABC):
         embed.add_field(name="Denied Users", value=denied_users_text)
 
         await interaction.followup.send(embed=embed, ephemeral=True)
-
-    async def autoroom_settings(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Display current settings."""
-        autoroom_info = await self.get_autoroom_info(channel)
-        if not autoroom_info:
-            await interaction.response.send_message("This is not an AutoRoom.", ephemeral=True)
-            return
-
-        owner_id = autoroom_info.get("owner")
-        owner = interaction.guild.get_member(owner_id)
-        owner_name = owner.display_name if owner else "None"
-        access_type = self._get_autoroom_type(channel, interaction.guild.default_role)
-        allowed_users = [f"<@{user.id}>" for user in channel.members if channel.permissions_for(user).connect]
-        denied_users = [f"<@{user.id}>" for user in channel.members if not channel.permissions_for(user).connect]
-
-        embed = discord.Embed(title=f"Settings for {channel.name}", color=0x7289da)
-        embed.add_field(name="Owner", value=owner_name)
-        embed.add_field(name="Access Type", value=access_type.capitalize())
-        embed.add_field(name="Allowed Users", value=", ".join(allowed_users) or "No One")
-        embed.add_field(name="Denied Users", value=", ".join(denied_users) or "No One")
-        embed.add_field(name="Bitrate", value=f"{channel.bitrate // 1000} kbps")
-        embed.add_field(name="User Limit", value=channel.user_limit or "Unlimited")
-
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def unlock(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Unlock your AutoRoom."""
