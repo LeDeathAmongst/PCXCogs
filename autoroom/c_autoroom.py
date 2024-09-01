@@ -102,6 +102,32 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Unlock your AutoRoom."""
         await self._process_allow_deny(interaction, "allow", channel=channel)
 
+    async def private(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Make the AutoRoom private."""
+        await channel.set_permissions(interaction.guild.default_role, view_channel=False)
+        await interaction.response.send_message("The AutoRoom is now private.", ephemeral=True)
+
+    async def public(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Make the AutoRoom public."""
+        await channel.set_permissions(interaction.guild.default_role, view_channel=True)
+        await interaction.response.send_message("The AutoRoom is now public.", ephemeral=True)
+
+    async def claim(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Claim ownership of the AutoRoom if there is no current owner."""
+        autoroom_info = await self.get_autoroom_info(channel)
+        current_owner_id = autoroom_info.get("owner")
+
+        if current_owner_id is None:
+            # No owner, claim the channel
+            await self.config.channel(channel).owner.set(interaction.user.id)
+            await channel.edit(name=f"{interaction.user.display_name}'s Channel")
+            await interaction.response.send_message(f"You have claimed ownership of the channel.", ephemeral=True)
+        else:
+            # There is already an owner
+            current_owner = interaction.guild.get_member(current_owner_id)
+            owner_name = current_owner.display_name if current_owner else "Unknown"
+            await interaction.response.send_message(f"The channel is already owned by {owner_name}.", ephemeral=True)
+
     async def _process_allow_deny(self, interaction: discord.Interaction, action: str, channel: discord.VoiceChannel):
         """Process allowing or denying users/roles access to the AutoRoom."""
         if action == "allow":
@@ -162,6 +188,24 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Change the region of the voice channel."""
         view = RegionSelectView(self, channel)
         await interaction.response.send_message("Select a region for the voice channel:", view=view, ephemeral=True)
+
+    async def _get_user_from_input(self, guild: discord.Guild, input_value: str) -> Optional[discord.Member]:
+        """Get a user from input (ID or mention)."""
+        if input_value.isdigit():
+            return guild.get_member(int(input_value))
+        elif input_value.startswith("<@") and input_value.endswith(">"):
+            user_id = input_value.strip("<@!>")
+            return guild.get_member(int(user_id))
+        return None
+
+    async def _get_role_from_input(self, guild: discord.Guild, input_value: str) -> Optional[discord.Role]:
+        """Get a role from input (ID or mention)."""
+        if input_value.isdigit():
+            return guild.get_role(int(input_value))
+        elif input_value.startswith("<@&") and input_value.endswith(">"):
+            role_id = input_value.strip("<@&>")
+            return guild.get_role(int(role_id))
+        return None
 
     def _has_override_permissions(self, user: discord.Member, autoroom_info: dict) -> bool:
         """Check if the user has override permissions."""
@@ -309,7 +353,9 @@ class AllowModal(discord.ui.Modal, title="Allow User or Role"):
             await self.channel.set_permissions(user, connect=True)
             await interaction.response.send_message(f"{user.display_name} has been allowed to join the channel.", ephemeral=True)
         elif role:
-            await self.channel.set_permissions(role, connect=True, overwrite=True)
+            for member in self.channel.members:
+                if role in member.roles:
+                    await self.channel.set_permissions(member, connect=True)
             await interaction.response.send_message(f"Role {role.name} has been allowed to join the channel.", ephemeral=True)
         else:
             await interaction.response.send_message("Role or user not found. Please enter a valid ID or mention.", ephemeral=True)
@@ -332,7 +378,9 @@ class DenyModal(discord.ui.Modal, title="Deny User or Role"):
             await self.channel.set_permissions(user, connect=False)
             await interaction.response.send_message(f"{user.display_name} has been denied access to the channel.", ephemeral=True)
         elif role:
-            await self.channel.set_permissions(role, connect=False, overwrite=True)
+            for member in self.channel.members:
+                if role in member.roles:
+                    await self.channel.set_permissions(member, connect=False)
             await interaction.response.send_message(f"Role {role.name} has been denied access to the channel.", ephemeral=True)
         else:
             await interaction.response.send_message("Role or user not found. Please enter a valid ID or mention.", ephemeral=True)
