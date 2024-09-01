@@ -134,8 +134,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         elif custom_id == "unlock":
             await self.unlock(interaction, voice_channel)
         elif custom_id == "limit":
-            view = SetUserLimitView(self, voice_channel)
-            await interaction.followup.send("Select a user limit:", view=view, ephemeral=True)
+            await interaction.response.send_modal(SetUserLimitModal(self, voice_channel))
         elif custom_id == "hide":
             await self.private(interaction, voice_channel)
         elif custom_id == "unhide":
@@ -381,30 +380,23 @@ class TransferOwnershipModal(discord.ui.Modal, title="Transfer Ownership"):
             await interaction.response.send_message("User not found or not in the channel. Please enter a valid user ID or mention.", ephemeral=True)
 
 
-class SetUserLimitView(discord.ui.View):
+class SetUserLimitModal(discord.ui.Modal, title="Set User Limit"):
     def __init__(self, cog, channel):
-        super().__init__()
         self.cog = cog
         self.channel = channel
+        super().__init__()
 
-        # Define the options for the dropdown menu
-        options = [discord.SelectOption(label="Unlimited (No limit)", value="0")]  # 0 will represent unlimited
-        options.extend(discord.SelectOption(label=f"{i} members", value=str(i)) for i in range(1, 21))
+    user_limit_input = discord.ui.TextInput(label="User Limit (0 for Unlimited)", custom_id="user_limit_input", style=discord.TextStyle.short)
 
-        # Create the select menu
-        self.select = discord.ui.Select(placeholder="Select user limit", options=options)
-        self.select.callback = self.on_select
-        self.add_item(self.select)
+    async def on_submit(self, interaction: discord.Interaction):
+        user_limit_value = self.user_limit_input.value
+        if not user_limit_value.isdigit() or int(user_limit_value) < 0:
+            await interaction.response.send_message("Invalid user limit. Please enter a non-negative integer.", ephemeral=True)
+            return
 
-    async def on_select(self, interaction: discord.Interaction):
-        # Get the selected value
-        user_limit_value = int(self.select.values[0])
-
-        # Update the user limit
-        if self.channel:
-            user_limit = None if user_limit_value == 0 else user_limit_value
-            await self.channel.edit(user_limit=user_limit)
-            await interaction.response.send_message(
-                f"User limit set to {'Unlimited' if user_limit is None else str(user_limit) + ' members'}.",
-                ephemeral=True
-            )
+        user_limit = None if int(user_limit_value) == 0 else int(user_limit_value)
+        await self.channel.edit(user_limit=user_limit)
+        await interaction.response.send_message(
+            f"User limit set to {'Unlimited' if user_limit is None else str(user_limit) + ' members'}.",
+            ephemeral=True
+        )
