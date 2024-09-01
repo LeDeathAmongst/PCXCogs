@@ -28,7 +28,7 @@ DEFAULT_EMOJIS = {
     "transfer": "<:Person_With_Rotation:1279848936752021504>",  # Person_With_Rotation
     "info": "<:Information:1279848926383702056>",  # Info
     "delete": "<:TrashCan:1279875131136806993>",  # TrashCan
-    "create_text": "<:SpeachBubble:1279890650535428198>"  # Placeholder for create text channel emoji
+    "create_text": "<:SpeachBubble:1279890650535428198>"  # Speech Bubble
 }
 
 REGION_OPTIONS = [
@@ -137,8 +137,12 @@ class AutoRoomCommands(MixinMeta, ABC):
             await channel.edit(topic=f"Text Channel ID: {text_channel.id}")
 
             await interaction.response.send_message(f"Temporary text channel {text_channel.mention} created.", ephemeral=True)
-        except Exception as e:
-            await self.handle_error(interaction, e)
+        except discord.errors.HTTPException as e:
+            # Handle specific error if topic contains restricted words
+            if "Channel topic contains at least one word that is not allowed" in str(e):
+                await interaction.response.send_message("Failed to set channel topic due to restricted words.", ephemeral=True)
+            else:
+                await self.handle_error(interaction, e)
 
     async def claim(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Claim ownership of the AutoRoom if there is no current owner, or override if admin/owner."""
