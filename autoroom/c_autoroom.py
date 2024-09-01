@@ -117,13 +117,13 @@ class AutoRoomCommands(MixinMeta, ABC):
         await interaction.followup.send("The AutoRoom is now public.", ephemeral=True)
 
     async def claim(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Claim ownership of the AutoRoom if there is no current owner."""
+        """Claim ownership of the AutoRoom if there is no current owner, or override if admin/owner."""
         await interaction.response.defer(ephemeral=True)
         autoroom_info = await self.get_autoroom_info(channel)
         current_owner_id = autoroom_info.get("owner")
 
-        if current_owner_id is None:
-            # No owner, claim the channel
+        if current_owner_id is None or self._has_override_permissions(interaction.user, autoroom_info):
+            # No owner or user has override permissions, claim the channel
             await self.config.channel(channel).owner.set(interaction.user.id)
             await channel.edit(name=f"{interaction.user.display_name}'s Channel")
             await interaction.followup.send(f"You have claimed ownership of the channel.", ephemeral=True)
@@ -216,9 +216,7 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def _has_override_permissions(self, user: discord.Member, autoroom_info: dict) -> bool:
         """Check if the user has override permissions."""
-        if user.guild_permissions.administrator:
-            return True
-        if user.id == user.guild.owner_id:
+        if user.guild_permissions.administrator or user.id == user.guild.owner_id:
             return True
         return False
 
@@ -257,82 +255,90 @@ class ControlPanelView(discord.ui.View):
         super().__init__()
         self.cog = cog
 
+    async def ensure_owner(self, interaction: discord.Interaction, channel: discord.VoiceChannel) -> bool:
+        autoroom_info = await self.cog.get_autoroom_info(channel)
+        owner_id = autoroom_info.get("owner")
+        if owner_id == interaction.user.id or self.cog._has_override_permissions(interaction.user, autoroom_info):
+            return True
+        await interaction.response.send_message("You must be the channel owner to use this button.", ephemeral=True)
+        return False
+
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["lock"], custom_id="lock")
     async def lock(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.locked(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["unlock"], custom_id="unlock")
     async def unlock(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.unlock(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["limit"], custom_id="limit")
     async def limit(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(SetUserLimitModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["hide"], custom_id="hide")
     async def hide(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.private(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["unhide"], custom_id="unhide")
     async def unhide(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.public(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["invite"], custom_id="invite")
     async def invite(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(RequestJoinModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["ban"], custom_id="ban")
     async def ban(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(DenyModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["permit"], custom_id="permit")
     async def permit(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(AllowModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["rename"], custom_id="rename")
     async def rename(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(ChangeNameModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["bitrate"], custom_id="bitrate")
     async def bitrate(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(ChangeBitrateModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["region"], custom_id="region")
     async def region(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.change_region(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["claim"], custom_id="claim")
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.claim(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["transfer"], custom_id="transfer")
     async def transfer(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel:
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(TransferOwnershipModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["info"], custom_id="info")
