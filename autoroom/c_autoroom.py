@@ -117,17 +117,17 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         # Handle the interaction if the user is the owner
         if custom_id.startswith("allow"):
-            await self.allow(interaction, channel)
+            await interaction.response.send_modal(AllowModal(self, channel))
         elif custom_id.startswith("bitrate"):
-            await self.bitrate(interaction, channel)
+            await interaction.response.send_modal(ChangeBitrateModal(self, channel))
         elif custom_id.startswith("claim"):
             await self.claim(interaction, channel)
         elif custom_id.startswith("deny"):
-            await self.deny(interaction, channel)
+            await interaction.response.send_modal(DenyModal(self, channel))
         elif custom_id.startswith("locked"):
             await self.locked(interaction, channel)
         elif custom_id.startswith("name"):
-            await self.name(interaction, channel)
+            await interaction.response.send_modal(ChangeNameModal(self, channel))
         elif custom_id.startswith("private"):
             await self.private(interaction, channel)
         elif custom_id.startswith("public"):
@@ -135,11 +135,11 @@ class AutoRoomCommands(MixinMeta, ABC):
         elif custom_id.startswith("settings"):
             await self.autoroom_settings(interaction, channel)
         elif custom_id.startswith("users"):
-            await self.users(interaction, channel)
+            await interaction.response.send_modal(SetUserLimitModal(self, channel))
         elif custom_id.startswith("region"):
             await self.change_region(interaction, channel)
         elif custom_id.startswith("transfer"):
-            await self.transfer_owner(interaction, channel)
+            await interaction.response.send_modal(TransferOwnerModal(self, channel))
 
     async def info(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Provide information about the current voice channel."""
@@ -162,94 +162,6 @@ class AutoRoomCommands(MixinMeta, ABC):
         embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    async def allow(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Allow a user (or role) into your AutoRoom."""
-        options = [
-            discord.SelectOption(label=member.display_name, value=str(member.id))
-            for member in interaction.guild.members
-            if member.bot is False
-        ]
-        select = discord.ui.Select(placeholder="Select a user to allow", options=options)
-
-        async def select_callback(select_interaction: discord.Interaction):
-            user_id = int(select.values[0])
-            user = interaction.guild.get_member(user_id)
-            if user:
-                await channel.set_permissions(user, connect=True)
-                allowed_users = await self.config.channel(channel).allowed_users()
-                if user.id not in allowed_users:
-                    allowed_users.append(user.id)
-                    await self.config.channel(channel).allowed_users.set(allowed_users)
-                await select_interaction.response.send_message(f"{user.display_name} has been allowed to join the channel.", ephemeral=True)
-            else:
-                await select_interaction.response.send_message("User not found.", ephemeral=True)
-
-        select.callback = select_callback
-        view = discord.ui.View()
-        view.add_item(select)
-        await interaction.response.send_message("Select a user to allow:", view=view, ephemeral=True)
-
-    async def deny(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Deny a user (or role) from accessing your AutoRoom."""
-        options = [
-            discord.SelectOption(label=role.name, value=f"role_{role.id}")
-            for role in interaction.guild.roles
-            if role.is_default() is False
-        ] + [
-            discord.SelectOption(label=member.display_name, value=f"user_{member.id}")
-            for member in interaction.guild.members
-            if member.bot is False
-        ]
-        select = discord.ui.Select(placeholder="Select a user or role to deny", options=options)
-
-        async def select_callback(select_interaction: discord.Interaction):
-            value = select.values[0]
-            if value.startswith("user_"):
-                user_id = int(value.split("_")[1])
-                user = interaction.guild.get_member(user_id)
-                if user:
-                    await channel.set_permissions(user, view_channel=False, connect=False)
-                    denied_users = await self.config.channel(channel).denied_users()
-                    if user.id not in denied_users:
-                        denied_users.append(user.id)
-                        await self.config.channel(channel).denied_users.set(denied_users)
-                    # Move user to another voice channel if they are currently in the denied channel
-                    if user.voice and user.voice.channel == channel:
-                        fallback_channel = discord.utils.get(interaction.guild.voice_channels, name="General")  # Change "General" to your fallback channel's name
-                        if fallback_channel:
-                            await user.move_to(fallback_channel)
-                    await select_interaction.response.send_message(f"{user.display_name} has been denied access to the channel.", ephemeral=True)
-                else:
-                    await select_interaction.response.send_message("User not found.", ephemeral=True)
-            elif value.startswith("role_"):
-                role_id = int(value.split("_")[1])
-                role = interaction.guild.get_role(role_id)
-                if role:
-                    await channel.set_permissions(role, view_channel=False, connect=False)
-                    denied_roles = await self.config.channel(channel).denied_roles()
-                    if role.id not in denied_roles:
-                        denied_roles.append(role.id)
-                        await self.config.channel(channel).denied_roles.set(denied_roles)
-                    # Move all members with the denied role out of the channel
-                    for member in channel.members:
-                        if role in member.roles:
-                            fallback_channel = discord.utils.get(interaction.guild.voice_channels, name="General")  # Change "General" to your fallback channel's name
-                            if fallback_channel:
-                                await member.move_to(fallback_channel)
-                    await select_interaction.response.send_message(f"Role {role.name} has been denied access to the channel.", ephemeral=True)
-                else:
-                    await select_interaction.response.send_message("Role not found.", ephemeral=True)
-
-        select.callback = select_callback
-        view = discord.ui.View()
-        view.add_item(select)
-        await interaction.response.send_message("Select a user or role to deny:", view=view, ephemeral=True)
-
-    async def bitrate(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Change the bitrate of your AutoRoom."""
-        modal = ChangeBitrateModal(self, channel)
-        await interaction.response.send_modal(modal)
 
     async def claim(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Claim ownership of this AutoRoom."""
@@ -274,11 +186,6 @@ class AutoRoomCommands(MixinMeta, ABC):
     async def locked(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Lock your AutoRoom (visible, but no one can join)."""
         await self._process_allow_deny(interaction, "lock", channel=channel)
-
-    async def name(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Change the name of your AutoRoom."""
-        modal = ChangeNameModal(self, channel)
-        await interaction.response.send_modal(modal)
 
     async def private(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Make your AutoRoom private."""
@@ -306,11 +213,6 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    async def users(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Change the user limit of your AutoRoom."""
-        modal = SetUserLimitModal(self, channel)
-        await interaction.response.send_modal(modal)
-
     async def change_region(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Change the voice region of your AutoRoom."""
         regions = await self.bot.http.get_voice_regions()
@@ -326,11 +228,6 @@ class AutoRoomCommands(MixinMeta, ABC):
         view = discord.ui.View()
         view.add_item(select)
         await interaction.response.send_message("Select a voice region:", view=view, ephemeral=True)
-
-    async def transfer_owner(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Transfer ownership of the AutoRoom to another user."""
-        modal = TransferOwnerModal(self, channel)
-        await interaction.response.send_modal(modal)
 
     async def _process_allow_deny(self, interaction: discord.Interaction, action: str, channel: discord.VoiceChannel):
         """Process allowing or denying users/roles access to the AutoRoom."""
@@ -428,6 +325,47 @@ class AutoRoomCommands(MixinMeta, ABC):
         return "public"
 
 # Modal Classes
+
+class AllowModal(discord.ui.Modal, title="Allow User"):
+    def __init__(self, cog, channel):
+        self.cog = cog
+        self.channel = channel
+        super().__init__()
+
+    user_input = discord.ui.TextInput(label="User ID or Username", custom_id="user_input", style=discord.TextStyle.short)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_input = self.user_input.value
+        user = await self.cog._get_user_from_input(interaction.guild, user_input)
+        if user:
+            await self.channel.set_permissions(user, connect=True)
+            await interaction.response.send_message(f"{user.display_name} has been allowed to join the channel.", ephemeral=True)
+        else:
+            await interaction.response.send_message("User not found. Please enter a valid user ID or username.", ephemeral=True)
+
+
+class DenyModal(discord.ui.Modal, title="Deny User or Role"):
+    def __init__(self, cog, channel):
+        self.cog = cog
+        self.channel = channel
+        super().__init__()
+
+    role_or_user_input = discord.ui.TextInput(label="Role/User ID or Mention", custom_id="role_or_user_input", style=discord.TextStyle.short)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        input_value = self.role_or_user_input.value
+        user = await self.cog._get_user_from_input(interaction.guild, input_value)
+        role = await self.cog._get_role_from_input(interaction.guild, input_value)
+
+        if user:
+            await self.channel.set_permissions(user, view_channel=False, connect=False)
+            await interaction.response.send_message(f"{user.display_name} has been denied access to the channel.", ephemeral=True)
+        elif role:
+            await self.channel.set_permissions(role, view_channel=False, connect=False)
+            await interaction.response.send_message(f"Role {role.name} has been denied access to the channel.", ephemeral=True)
+        else:
+            await interaction.response.send_message("Role or user not found. Please enter a valid ID or mention.", ephemeral=True)
+
 
 class ChangeBitrateModal(discord.ui.Modal, title="Change Bitrate"):
     def __init__(self, cog, channel):
