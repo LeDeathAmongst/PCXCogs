@@ -1,3 +1,4 @@
+
 """The autoroom command."""
 
 import datetime
@@ -81,7 +82,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         elif custom_id.startswith("public"):
             await self.public(interaction, channel)
         elif custom_id.startswith("settings"):
-            await self.settings(interaction, channel)
+            await self.autoroom_settings(interaction, channel)
         elif custom_id.startswith("users"):
             await self.users(interaction, channel)
 
@@ -144,7 +145,7 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     async def locked(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Lock your AutoRoom (visible, but no one can join)."""
-        await channel.set_permissions(interaction.guild.default_role, connect=False)
+        await self._process_allow_deny(interaction, "lock", channel=channel)
         await interaction.response.send_message("The AutoRoom is now locked.")
 
     async def name(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
@@ -164,15 +165,15 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     async def private(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Make your AutoRoom private."""
-        await channel.set_permissions(interaction.guild.default_role, connect=False, view_channel=False)
+        await self._process_allow_deny(interaction, "deny", channel=channel)
         await interaction.response.send_message("The AutoRoom is now private.")
 
     async def public(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Make your AutoRoom public."""
-        await channel.set_permissions(interaction.guild.default_role, connect=True, view_channel=True)
+        await self._process_allow_deny(interaction, "allow", channel=channel)
         await interaction.response.send_message("The AutoRoom is now public.")
 
-    async def settings(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+    async def autoroom_settings(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Display current settings."""
         autoroom_info = await self.get_autoroom_info(channel)
         if not autoroom_info:
@@ -288,6 +289,53 @@ class AutoRoomCommands(MixinMeta, ABC):
         ):
             return member.voice.channel
         return None
+
+    async def _send_temp_error_message(
+        self, ctx: commands.Context, message: str
+    ) -> None:
+        """Send an error message that deletes itself along with the context message."""
+        hint = await ctx.send(error(f"{ctx.message.author.mention}, {message}"))
+        await delete(ctx.message, delay=10)
+        await delete(hint, delay=10)
+
+    async def _get_autoroom_channel_and_info(
+        self, ctx: commands.Context, *, check_owner: bool = True
+    ) -> tuple[discord.VoiceChannel | None, dict[str, Any] | None]:
+        autoroom_channel = self._get_current_voice_channel(ctx.message.author)
+        autoroom_info = await self.get_autoroom_info(autoroom_channel)
+        if not autoroom_info:
+            await self._send_temp_error_message(ctx, "you are not in an AutoRoom.")
+            return None, None
+        if check_owner and ctx.message.author.id != autoroom_info["owner"]:
+            reason_server = ""
+            if not autoroom_info["owner"]:
+                reason_server = " (it is a server AutoRoom)"
+            await self._send_temp_error_message(
+                ctx, f"you are not the owner of this AutoRoom{reason_server}."
+            )
+            return None, None
+        return autoroom_channel, autoroom_info
+
+    @staticmethod
+    def _get_autoroom_type(autoroom: discord.VoiceChannel, role: discord.Role) -> str:
+        """Get the type of access a role has in an AutoRoom (public, locked, private, etc)."""
+        view_channel = role.permissions.view_channel
+        connect = role.permissions.connect
+        if role in autoroom.overwrites:
+            overwrites_allow, overwrites_deny = autoroom.overwrites[role].pair()
+            if overwrites_allow.view_channel:
+                view_channel = True
+            if overwrites_allow.connect:
+                connect = True
+            if overwrites_deny.view_channel:
+                view_channel = False
+            if overwrites_deny.connect:
+                connect = False
+        if not view_channel and not connect:
+            return "private"
+        if view_channel and not connect:
+            return "locked"
+        return "public"
 
     async def _send_temp_error_message(
         self, ctx: commands.Context, message: str
