@@ -38,11 +38,6 @@ class AutoRoomCommands(MixinMeta, ABC):
         super().__init__(*args, **kwargs)
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
 
-        # Register default values for each guild
-        default_guild = {
-            "description": DEFAULT_DESCRIPTION,
-        }
-
         # Register default values for each channel
         default_channel = {
             "allowed_users": [],
@@ -67,14 +62,8 @@ class AutoRoomCommands(MixinMeta, ABC):
             }
         }
 
-        # Register the default settings for guilds and channels
-        self.config.register_guild(**default_guild)
+        # Register the default settings for channels
         self.config.register_channel(**default_channel)
-
-    async def get_guild_description(self, guild: discord.Guild) -> str:
-        """Retrieve the description for the guild, defaulting if not set."""
-        description = await self.config.guild(guild).description()
-        return description or DEFAULT_DESCRIPTION
 
     @commands.group()
     @commands.guild_only()
@@ -94,11 +83,10 @@ class AutoRoomCommands(MixinMeta, ABC):
             await ctx.send("This voice channel is not managed by AutoRoom.")
             return
 
-        # Use the get_guild_description method to retrieve the description
-        description = await self.get_guild_description(ctx.guild)
+        # Use the default description
         buttons_config = await self.config.channel(voice_channel).buttons()
 
-        embed = discord.Embed(title=f"Control Panel for {voice_channel.name}", description=description, color=0x7289da)
+        embed = discord.Embed(title=f"Control Panel for {voice_channel.name}", description=DEFAULT_DESCRIPTION, color=0x7289da)
         view = discord.ui.View()
 
         for key, button in buttons_config.items():
@@ -110,12 +98,6 @@ class AutoRoomCommands(MixinMeta, ABC):
             ))
 
         await ctx.send(embed=embed, view=view)
-
-    @autoroom.command(name="description")
-    async def autoroom_description(self, ctx: commands.Context, *, description: str) -> None:
-        """Set a custom description for the control panel."""
-        await self.config.guild(ctx.guild).description.set(description)
-        await ctx.send(f"Description set to: {description}")
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
