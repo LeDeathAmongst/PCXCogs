@@ -136,7 +136,8 @@ class AutoRoomCommands(MixinMeta, ABC):
         owner = interaction.guild.get_member(owner_id)
         owner_name = owner.display_name if owner else "None"
 
-        channel_age = datetime.datetime.utcnow() - channel.created_at
+        # Convert channel.created_at to naive datetime for subtraction
+        channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
         bitrate = channel.bitrate // 1000  # Convert to kbps
 
         embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
