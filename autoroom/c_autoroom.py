@@ -18,7 +18,7 @@ DEFAULT_EMOJIS = {
     "lock": "<:Locked:1279848927587467447>",  # Locked
     "unlock": "<:Unlocked:1279848944570073109>",  # Unlocked
     "limit": "<:People:1279848931043573790>",  # People
-    "hide": " <:Crossed_Eye:1279848957475819723>",  # Crossed_Eye
+    "hide": "<:Crossed_Eye:1279848957475819723>",  # Crossed_Eye
     "unhide": "<:Eye:1279848986299076728>",  # Eye
     "invite": "<:Invite:1279857570634272818>",  # Invite/Request Join
     "ban": "<:Hammer:1279848987922530365>",  # Hammer
@@ -66,10 +66,14 @@ class AutoRoomCommands(MixinMeta, ABC):
     @staticmethod
     def parse_emoji(emoji_str):
         """Parse the emoji string and return a discord.PartialEmoji."""
-        if emoji_str.startswith("<:") and emoji_str.endswith(">"):
-            name, id = emoji_str[2:-1].split(":")
-            return discord.PartialEmoji(name=name, id=int(id))
-        return discord.PartialEmoji(name=emoji_str)
+        try:
+            if emoji_str.startswith("<:") and emoji_str.endswith(">"):
+                name, id = emoji_str[2:-1].split(":")
+                return discord.PartialEmoji(name=name, id=int(id))
+            return discord.PartialEmoji(name=emoji_str)
+        except Exception as e:
+            print(f"Failed to parse emoji: {emoji_str} with error: {e}")
+            return None
 
     @commands.command(name="controlpanel")
     @commands.guild_only()
@@ -96,6 +100,9 @@ class AutoRoomCommands(MixinMeta, ABC):
         for row in button_order:
             for button_name in row:
                 emoji = self.parse_emoji(buttons[button_name])
+                if emoji is None:
+                    print(f"Skipping button {button_name} due to invalid emoji.")
+                    continue
                 view.add_item(discord.ui.Button(
                     style=discord.ButtonStyle.primary,
                     label="",
