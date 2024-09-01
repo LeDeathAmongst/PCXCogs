@@ -83,7 +83,7 @@ class AutoRoomCommands(MixinMeta, ABC):
                 style=button["style"]
             ))
 
-        await ctx.send(embed=embed, view=view, ephemeral=True)
+        await ctx.send(embed=embed, view=view, ephemeral=False)
 
     @autoroom.command(name="description")
     async def autoroom_description(self, ctx: commands.Context, *, description: str) -> None:
