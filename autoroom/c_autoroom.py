@@ -5,7 +5,7 @@ from typing import Any, Optional
 import discord
 from PIL import Image, ImageDraw, ImageFont
 import io
-from redbot.core import commands, Config
+from redbot.core import commands
 from redbot.core.utils.chat_formatting import humanize_timedelta
 
 from .abc import MixinMeta
@@ -35,13 +35,10 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-        self.config.register_guild(emojis=DEFAULT_EMOJIS)
         self.image_path = "control_panel_image.png"
 
-    async def generate_image(self, ctx: commands.Context):
+    def generate_image(self):
         """Generate an image with button names and emojis."""
-        emojis = await self.config.guild(ctx.guild).emojis()
         width, height = 700, 200  # Adjusted height for fewer buttons
         image = Image.new('RGB', (width, height), color=(255, 248, 240))
         draw = ImageDraw.Draw(image)
@@ -49,10 +46,10 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         # Define button labels
         labels = [
-            ("Lock", emojis["lock"]), ("Unlock", emojis["unlock"]), ("Limit", emojis["limit"]), ("Hide", emojis["hide"]),
-            ("Unhide", emojis["unhide"]), ("Invite", emojis["invite"]), ("Ban", emojis["ban"]), ("Permit", emojis["permit"]),
-            ("Rename", emojis["rename"]), ("Bitrate", emojis["bitrate"]), ("Region", emojis["region"]), ("Claim", emojis["claim"]),
-            ("Transfer", emojis["transfer"])
+            ("Lock", DEFAULT_EMOJIS["lock"]), ("Unlock", DEFAULT_EMOJIS["unlock"]), ("Limit", DEFAULT_EMOJIS["limit"]), ("Hide", DEFAULT_EMOJIS["hide"]),
+            ("Unhide", DEFAULT_EMOJIS["unhide"]), ("Invite", DEFAULT_EMOJIS["invite"]), ("Ban", DEFAULT_EMOJIS["ban"]), ("Permit", DEFAULT_EMOJIS["permit"]),
+            ("Rename", DEFAULT_EMOJIS["rename"]), ("Bitrate", DEFAULT_EMOJIS["bitrate"]), ("Region", DEFAULT_EMOJIS["region"]), ("Claim", DEFAULT_EMOJIS["claim"]),
+            ("Transfer", DEFAULT_EMOJIS["transfer"])
         ]
 
         # Draw labels on the image
@@ -65,46 +62,19 @@ class AutoRoomCommands(MixinMeta, ABC):
         # Save the image locally
         image.save(self.image_path)
 
-    @commands.command(name="setemojis")
-    @commands.guild_only()
-    async def set_emojis(self, ctx: commands.Context, **emojis):
-        """Set custom emojis for the control panel buttons."""
-        current_emojis = await self.config.guild(ctx.guild).emojis()
-        current_emojis.update(emojis)
-        await self.config.guild(ctx.guild).emojis.set(current_emojis)
-        await ctx.send("Custom emojis have been set.")
-        await self.generate_image(ctx)  # Regenerate the image with updated emojis
-
     @commands.command(name="controlpanel")
     @commands.guild_only()
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
         """Send the master control panel for the guild."""
-        await self.generate_image(ctx)
+        self.generate_image()
         embed = discord.Embed(title="Master Control Panel", color=0x7289da)
         file = discord.File(self.image_path, filename="control_panel_image.png")
         embed.set_image(url=f"attachment://control_panel_image.png")
 
         view = discord.ui.View()
 
-        # Get current emojis
-        emojis = await self.config.guild(ctx.guild).emojis()
-
         # Define buttons with emojis
-        buttons = {
-            "lock": emojis["lock"],
-            "unlock": emojis["unlock"],
-            "limit": emojis["limit"],
-            "hide": emojis["hide"],
-            "unhide": emojis["unhide"],
-            "invite": emojis["invite"],
-            "ban": emojis["ban"],
-            "permit": emojis["permit"],
-            "rename": emojis["rename"],
-            "bitrate": emojis["bitrate"],
-            "region": emojis["region"],
-            "claim": emojis["claim"],
-            "transfer": emojis["transfer"]
-        }
+        buttons = DEFAULT_EMOJIS
 
         # Add buttons to the view in the specified order
         button_order = [
