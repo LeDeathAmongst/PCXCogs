@@ -15,19 +15,21 @@ MAX_BITRATE = 96  # Maximum bitrate in kbps
 DEFAULT_REGION = "us-central"  # Set your preferred default region here
 
 DEFAULT_EMOJIS = {
-    "lock": "🔒",  # Locked
-    "unlock": "🔓",  # Unlocked
-    "limit": "🔢",  # People
-    "hide": "🙈",  # Crossed_Eye
-    "unhide": "👁 ️",  # Eye
-    "invite": "📢",  # Invite/Request Join
-    "ban": "🔨",  # Hammer
-    "permit": "✅",  # Check_Mark
-    "rename": "✏️",  # Pensil
-    "bitrate": "🎵",  # Headphones
-    "region": "🌐",  # Servers
-    "claim": "👑",  # Crown
-    "transfer": "🔄"  # Person_With_Rotation
+DEFAULT_EMOJIS = {
+    "lock": "<:Locked:1279848927587467447>",  # Locked
+    "unlock": "<:Unlocked:1279848944570073109>",  # Unlocked
+    "limit": "<:People:1279848931043573790>",  # People
+    "hide": " <:Crossed_Eye:1279848957475819723>",  # Crossed_Eye
+    "unhide": "<:Eye:1279848986299076728>",  # Eye
+    "invite": "<:Invite:1279857570634272818>",  # Invite/Request Join
+    "ban": "<:Hammer:1279848987922530365>",  # Hammer
+    "permit": "<:Check_Mark:1279848948491747411>",  # Check_Mark
+    "rename": "<:Pensil:1279848929126645879>",  # Pensil
+    "bitrate": "<:Headphones:1279848994327232584>",  # Headphones
+    "region": "<:Servers:1279848940786810891>",  # Servers
+    "claim": "<:Crown:1279848977658810451>",  # Crown
+    "transfer": "<:Person_With_Rotation:1279848936752021504>",  # Person_With_Rotation
+    "info": "<:Information:1279848926383702056>"  # Info
 }
 
 class AutoRoomCommands(MixinMeta, ABC):
@@ -39,7 +41,7 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def generate_image(self):
         """Generate an image with button names and emojis."""
-        width, height = 700, 200  # Adjusted height for fewer buttons
+        width, height = 700, 250  # Adjusted height for more buttons
         image = Image.new('RGB', (width, height), color=(255, 248, 240))
         draw = ImageDraw.Draw(image)
         font = ImageFont.load_default()
@@ -49,7 +51,7 @@ class AutoRoomCommands(MixinMeta, ABC):
             ("Lock", DEFAULT_EMOJIS["lock"]), ("Unlock", DEFAULT_EMOJIS["unlock"]), ("Limit", DEFAULT_EMOJIS["limit"]), ("Hide", DEFAULT_EMOJIS["hide"]),
             ("Unhide", DEFAULT_EMOJIS["unhide"]), ("Invite", DEFAULT_EMOJIS["invite"]), ("Ban", DEFAULT_EMOJIS["ban"]), ("Permit", DEFAULT_EMOJIS["permit"]),
             ("Rename", DEFAULT_EMOJIS["rename"]), ("Bitrate", DEFAULT_EMOJIS["bitrate"]), ("Region", DEFAULT_EMOJIS["region"]), ("Claim", DEFAULT_EMOJIS["claim"]),
-            ("Transfer", DEFAULT_EMOJIS["transfer"])
+            ("Transfer", DEFAULT_EMOJIS["transfer"]), ("Info", DEFAULT_EMOJIS["info"])
         ]
 
         # Draw labels on the image
@@ -61,6 +63,14 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         # Save the image locally
         image.save(self.image_path)
+
+    @staticmethod
+    def parse_emoji(emoji_str):
+        """Parse the emoji string and return a discord.PartialEmoji."""
+        if emoji_str.startswith("<:") and emoji_str.endswith(">"):
+            name, id = emoji_str[2:-1].split(":")
+            return discord.PartialEmoji(name=name, id=int(id))
+        return discord.PartialEmoji(name=emoji_str)
 
     @commands.command(name="controlpanel")
     @commands.guild_only()
@@ -81,15 +91,16 @@ class AutoRoomCommands(MixinMeta, ABC):
             ["lock", "unlock", "limit", "hide"],
             ["unhide", "invite", "ban", "permit"],
             ["rename", "bitrate", "region", "claim"],
-            ["transfer"]
+            ["transfer", "info"]
         ]
 
         for row in button_order:
             for button_name in row:
+                emoji = self.parse_emoji(buttons[button_name])
                 view.add_item(discord.ui.Button(
                     style=discord.ButtonStyle.primary,
                     label="",
-                    emoji=buttons[button_name],
+                    emoji=emoji,
                     custom_id=button_name
                 ))
 
@@ -154,6 +165,8 @@ class AutoRoomCommands(MixinMeta, ABC):
             await self.claim(interaction, voice_channel)
         elif custom_id == "transfer":
             await self.show_transfer_owner_menu(interaction, voice_channel)
+        elif custom_id == "info":
+            await self.info(interaction, voice_channel)
 
     async def locked(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Lock your AutoRoom."""
@@ -204,6 +217,45 @@ class AutoRoomCommands(MixinMeta, ABC):
         view = discord.ui.View()
         view.add_item(select)
         await interaction.response.send_message("Select a new owner from the list:", view=view, ephemeral=True)
+
+    async def info(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Provide information about the current voice channel."""
+        autoroom_info = await self.get_autoroom_info(channel)
+        owner_id = autoroom_info.get("owner")
+        owner = interaction.guild.get_member(owner_id)
+        owner_name = owner.display_name if owner else "None"
+        owner_mention = owner.mention if owner else "None"
+
+        # Convert channel.created_at to naive datetime for subtraction
+        channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
+        bitrate = channel.bitrate // 1000  # Convert to kbps
+        user_limit = channel.user_limit or "Unlimited"
+        rtc_region = channel.rtc_region or "Automatic"
+
+        # Determine allowed and denied users
+        allowed_users = []
+        denied_users = []
+        for target, overwrite in channel.overwrites.items():
+            if isinstance(target, discord.Member):
+                if overwrite.connect is True:
+                    allowed_users.append(target.mention)
+                elif overwrite.connect is False:
+                    denied_users.append(target.mention)
+
+        allowed_users_text = ", ".join(allowed_users) if allowed_users else "No One"
+        denied_users_text = ", ".join(denied_users) if denied_users else "No One"
+
+        embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
+        embed.add_field(name="Owner", value=f"{owner_name} ({owner_mention})")
+        embed.add_field(name="Age", value=humanize_timedelta(timedelta=channel_age))
+        embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
+        embed.add_field(name="User Limit", value=user_limit)
+        embed.add_field(name="Region", value=rtc_region)
+        embed.add_field(name="Private", value="Yes" if self._get_autoroom_type(channel, interaction.guild.default_role) == "private" else "No")
+        embed.add_field(name="Allowed Users", value=allowed_users_text)
+        embed.add_field(name="Denied Users", value=denied_users_text)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     def _has_override_permissions(self, user: discord.Member, autoroom_info: dict) -> bool:
         """Check if the user has override permissions."""
