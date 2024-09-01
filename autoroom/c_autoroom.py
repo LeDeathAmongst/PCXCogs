@@ -35,14 +35,13 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config = Config.get_conf(self, identifier=1234567890)
+        self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
         self.config.register_guild(emojis=DEFAULT_EMOJIS)
         self.image_path = "control_panel_image.png"
-        self.generate_image()
 
-    async def generate_image(self):
+    async def generate_image(self, ctx: commands.Context):
         """Generate an image with button names and emojis."""
-        emojis = await self.config.emojis()
+        emojis = await self.config.guild(ctx.guild).emojis()
         width, height = 700, 200  # Adjusted height for fewer buttons
         image = Image.new('RGB', (width, height), color=(255, 248, 240))
         draw = ImageDraw.Draw(image)
@@ -70,16 +69,17 @@ class AutoRoomCommands(MixinMeta, ABC):
     @commands.guild_only()
     async def set_emojis(self, ctx: commands.Context, **emojis):
         """Set custom emojis for the control panel buttons."""
-        current_emojis = await self.config.emojis()
+        current_emojis = await self.config.guild(ctx.guild).emojis()
         current_emojis.update(emojis)
-        await self.config.emojis.set(current_emojis)
+        await self.config.guild(ctx.guild).emojis.set(current_emojis)
         await ctx.send("Custom emojis have been set.")
-        await self.generate_image()  # Regenerate the image with updated emojis
+        await self.generate_image(ctx)  # Regenerate the image with updated emojis
 
     @commands.command(name="controlpanel")
     @commands.guild_only()
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
         """Send the master control panel for the guild."""
+        await self.generate_image(ctx)
         embed = discord.Embed(title="Master Control Panel", color=0x7289da)
         file = discord.File(self.image_path, filename="control_panel_image.png")
         embed.set_image(url=f"attachment://control_panel_image.png")
@@ -87,7 +87,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         view = discord.ui.View()
 
         # Get current emojis
-        emojis = await self.config.emojis()
+        emojis = await self.config.guild(ctx.guild).emojis()
 
         # Define buttons with emojis
         buttons = {
@@ -273,22 +273,27 @@ class AutoRoomCommands(MixinMeta, ABC):
 
 # Modal Classes
 
-class AllowModal(discord.ui.Modal, title="Allow User"):
+class AllowModal(discord.ui.Modal, title="Allow User or Role"):
     def __init__(self, cog, channel):
         self.cog = cog
         self.channel = channel
         super().__init__()
 
-    user_input = discord.ui.TextInput(label="User ID or Username", custom_id="user_input", style=discord.TextStyle.short)
+    role_or_user_input = discord.ui.TextInput(label="Role/User ID or Mention", custom_id="role_or_user_input", style=discord.TextStyle.short)
 
     async def on_submit(self, interaction: discord.Interaction):
-        user_input = self.user_input.value
-        user = await self.cog._get_user_from_input(interaction.guild, user_input)
+        input_value = self.role_or_user_input.value
+        user = await self.cog._get_user_from_input(interaction.guild, input_value)
+        role = await self.cog._get_role_from_input(interaction.guild, input_value)
+
         if user:
             await self.channel.set_permissions(user, connect=True)
             await interaction.response.send_message(f"{user.display_name} has been allowed to join the channel.", ephemeral=True)
+        elif role:
+            await self.channel.set_permissions(role, connect=True, overwrite=True)
+            await interaction.response.send_message(f"Role {role.name} has been allowed to join the channel.", ephemeral=True)
         else:
-            await interaction.response.send_message("User not found. Please enter a valid user ID or username.", ephemeral=True)
+            await interaction.response.send_message("Role or user not found. Please enter a valid ID or mention.", ephemeral=True)
 
 
 class DenyModal(discord.ui.Modal, title="Deny User or Role"):
@@ -305,10 +310,10 @@ class DenyModal(discord.ui.Modal, title="Deny User or Role"):
         role = await self.cog._get_role_from_input(interaction.guild, input_value)
 
         if user:
-            await self.channel.set_permissions(user, view_channel=False, connect=False)
+            await self.channel.set_permissions(user, connect=False)
             await interaction.response.send_message(f"{user.display_name} has been denied access to the channel.", ephemeral=True)
         elif role:
-            await self.channel.set_permissions(role, view_channel=False, connect=False)
+            await self.channel.set_permissions(role, connect=False, overwrite=True)
             await interaction.response.send_message(f"Role {role.name} has been denied access to the channel.", ephemeral=True)
         else:
             await interaction.response.send_message("Role or user not found. Please enter a valid ID or mention.", ephemeral=True)
