@@ -15,7 +15,6 @@ MAX_BITRATE = 96  # Maximum bitrate in kbps
 DEFAULT_REGION = "us-central"  # Set your preferred default region here
 
 DEFAULT_EMOJIS = {
-DEFAULT_EMOJIS = {
     "lock": "<:Locked:1279848927587467447>",  # Locked
     "unlock": "<:Unlocked:1279848944570073109>",  # Unlocked
     "limit": "<:People:1279848931043573790>",  # People
