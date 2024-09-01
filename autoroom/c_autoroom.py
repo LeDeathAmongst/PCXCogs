@@ -5,7 +5,7 @@ from abc import ABC
 from typing import Any, Optional
 
 import discord
-from redbot.core import commands, Config
+from redbot.core import commands
 from redbot.core.utils.chat_formatting import error, humanize_timedelta
 
 from .abc import MixinMeta
@@ -36,34 +36,6 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-
-        # Register default values for each channel
-        default_channel = {
-            "allowed_users": [],
-            "denied_users": [],
-            "allowed_roles": [],
-            "denied_roles": [],
-            "owner": None,
-            "buttons": {
-                "allow": {"emoji": "✅", "name": "Allow", "style": discord.ButtonStyle.primary},
-                "bitrate": {"emoji": "🔊", "name": "Bitrate", "style": discord.ButtonStyle.primary},
-                "claim": {"emoji": "👑", "name": "Claim", "style": discord.ButtonStyle.primary},
-                "deny": {"emoji": "❌", "name": "Deny", "style": discord.ButtonStyle.primary},
-                "locked": {"emoji": "🔒", "name": "Locked", "style": discord.ButtonStyle.primary},
-                "name": {"emoji": "✏️", "name": "Name", "style": discord.ButtonStyle.primary},
-                "private": {"emoji": "🔐", "name": "Private", "style": discord.ButtonStyle.primary},
-                "public": {"emoji": "🌐", "name": "Public", "style": discord.ButtonStyle.primary},
-                "settings": {"emoji": "⚙️", "name": "Settings", "style": discord.ButtonStyle.primary},
-                "users": {"emoji": "👥", "name": "Users", "style": discord.ButtonStyle.primary},
-                "region": {"emoji": "🌍", "name": "Region", "style": discord.ButtonStyle.primary},
-                "transfer": {"emoji": "🔄", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
-                "info": {"emoji": "ℹ️", "name": "Info", "style": discord.ButtonStyle.primary},
-            }
-        }
-
-        # Register the default settings for channels
-        self.config.register_channel(**default_channel)
 
     @commands.group()
     @commands.guild_only()
@@ -84,12 +56,27 @@ class AutoRoomCommands(MixinMeta, ABC):
             return
 
         # Use the default description
-        buttons_config = await self.config.channel(voice_channel).buttons()
-
         embed = discord.Embed(title=f"Control Panel for {voice_channel.name}", description=DEFAULT_DESCRIPTION, color=0x7289da)
         view = discord.ui.View()
 
-        for key, button in buttons_config.items():
+        # Define fixed buttons
+        buttons = {
+            "allow": {"emoji": "✅", "name": "Allow", "style": discord.ButtonStyle.primary},
+            "bitrate": {"emoji": "🔊", "name": "Bitrate", "style": discord.ButtonStyle.primary},
+            "claim": {"emoji": "👑", "name": "Claim", "style": discord.ButtonStyle.primary},
+            "deny": {"emoji": "❌", "name": "Deny", "style": discord.ButtonStyle.primary},
+            "locked": {"emoji": "🔒", "name": "Locked", "style": discord.ButtonStyle.primary},
+            "name": {"emoji": "✏️", "name": "Name", "style": discord.ButtonStyle.primary},
+            "private": {"emoji": "🔐", "name": "Private", "style": discord.ButtonStyle.primary},
+            "public": {"emoji": "🌐", "name": "Public", "style": discord.ButtonStyle.primary},
+            "settings": {"emoji": "⚙️", "name": "Settings", "style": discord.ButtonStyle.primary},
+            "users": {"emoji": "👥", "name": "Users", "style": discord.ButtonStyle.primary},
+            "region": {"emoji": "🌍", "name": "Region", "style": discord.ButtonStyle.primary},
+            "transfer": {"emoji": "🔄", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
+            "info": {"emoji": "ℹ️", "name": "Info", "style": discord.ButtonStyle.primary},
+        }
+
+        for key, button in buttons.items():
             view.add_item(discord.ui.Button(
                 label=button["name"],
                 emoji=button["emoji"],
