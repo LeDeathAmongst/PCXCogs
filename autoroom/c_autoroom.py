@@ -135,13 +135,14 @@ class AutoRoomCommands(MixinMeta, ABC):
         owner_id = autoroom_info.get("owner")
         owner = interaction.guild.get_member(owner_id)
         owner_name = owner.display_name if owner else "None"
+        owner_mention = owner.mention if owner else "None"
 
         # Convert channel.created_at to naive datetime for subtraction
         channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
         bitrate = channel.bitrate // 1000  # Convert to kbps
 
         embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
-        embed.add_field(name="Owner", value=owner_name)
+        embed.add_field(name="Owner", value=f"{owner_name} ({owner_mention})")
         embed.add_field(name="Age", value=humanize_timedelta(timedelta=channel_age))
         embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
 
