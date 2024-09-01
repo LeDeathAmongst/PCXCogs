@@ -3,7 +3,7 @@ from abc import ABC
 from typing import Any, Optional
 
 import discord
-from redbot.core import commands
+from redbot.core import commands, Config
 from redbot.core.utils.chat_formatting import humanize_timedelta
 
 from .abc import MixinMeta
@@ -49,6 +49,11 @@ REGION_OPTIONS = [
 class AutoRoomCommands(MixinMeta, ABC):
     """The autoroom command."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
+        self.config.register_guild(control_panel_message=None)
+
     @staticmethod
     def parse_emoji(emoji_str):
         """Parse the emoji string and return a discord.PartialEmoji."""
@@ -65,6 +70,11 @@ class AutoRoomCommands(MixinMeta, ABC):
     @commands.guild_only()
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
         """Send the master control panel for the guild."""
+        existing_message_id = await self.config.guild(ctx.guild).control_panel_message()
+        if existing_message_id:
+            await ctx.send("A control panel already exists for this server. Please delete it first.")
+            return
+
         embed = discord.Embed(title="Master Control Panel", color=0x7289da)
 
         # Add a description with the button labels and emojis
@@ -88,7 +98,26 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         view = ControlPanelView(self)
 
-        await ctx.send(embed=embed, view=view)
+        message = await ctx.send(embed=embed, view=view)
+        await self.config.guild(ctx.guild).control_panel_message.set(message.id)
+
+    @commands.command(name="deletecontrolpanel")
+    @commands.guild_only()
+    async def delete_controlpanel(self, ctx: commands.Context) -> None:
+        """Delete the existing control panel for the guild."""
+        message_id = await self.config.guild(ctx.guild).control_panel_message()
+        if not message_id:
+            await ctx.send("No control panel exists for this server.")
+            return
+
+        try:
+            message = await ctx.channel.fetch_message(message_id)
+            await message.delete()
+            await ctx.send("Control panel deleted.")
+        except discord.NotFound:
+            await ctx.send("Control panel message not found. It may have already been deleted.")
+
+        await self.config.guild(ctx.guild).control_panel_message.clear()
 
     async def locked(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Lock your AutoRoom."""
@@ -436,7 +465,6 @@ class RegionSelectView(discord.ui.View):
         self.cog = cog
         self.channel = channel
 
-        # Set a default string value for "Automatic" instead of None
         options = [discord.SelectOption(label=name, value=region or "automatic") for name, region in REGION_OPTIONS]
         self.select = discord.ui.Select(placeholder="Select Region", options=options)
         self.select.callback = self.on_select
@@ -444,7 +472,6 @@ class RegionSelectView(discord.ui.View):
 
     async def on_select(self, interaction: discord.Interaction):
         selected_region = self.select.values[0]
-        # Use None if "automatic" is selected to represent the default region
         rtc_region = None if selected_region == "automatic" else selected_region
         await self.channel.edit(rtc_region=rtc_region)
         await interaction.response.send_message(f"Region changed to {selected_region if rtc_region else 'Automatic'}.", ephemeral=True)
