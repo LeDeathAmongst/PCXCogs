@@ -28,7 +28,7 @@ DEFAULT_EMOJIS = {
     "transfer": "<:Person_With_Rotation:1279848936752021504>",  # Person_With_Rotation
     "info": "<:Information:1279848926383702056>",  # Info
     "delete": "<:TrashCan:1279875131136806993>",  # TrashCan
-    "create_text": "<:Text:1234567890123456789>"  # Placeholder for create text channel emoji
+    "create_text": "<:SpeachBubble:1279890650535428198>"  # Placeholder for create text channel emoji
 }
 
 REGION_OPTIONS = [
