@@ -83,12 +83,14 @@ class AutoRoomCommands(MixinMeta, ABC):
         voice_channel = self._get_current_voice_channel(interaction.user)
 
         if not voice_channel:
-            await interaction.response.send_message("You must be in a voice channel to use this command.", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("You must be in a voice channel to use this command.", ephemeral=True)
             return
 
         autoroom_info = await self.get_autoroom_info(voice_channel)
         if not autoroom_info:
-            await interaction.response.send_message("This voice channel is not managed by AutoRoom.", ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("This voice channel is not managed by AutoRoom.", ephemeral=True)
             return
 
         # Check if the user is the owner of the channel or has override permissions
@@ -96,10 +98,15 @@ class AutoRoomCommands(MixinMeta, ABC):
             owner_id = autoroom_info.get("owner")
             owner = interaction.guild.get_member(owner_id)
             owner_name = owner.display_name if owner else "Unknown"
-            await interaction.response.send_message(
-                f"Only {owner_name} or an admin can control the panel.", ephemeral=True
-            )
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    f"Only {owner_name} or an admin can control the panel.", ephemeral=True
+                )
             return
+
+        # Defer the interaction if needed
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=True)
 
         # Handle the interaction
         if custom_id == "allow":
