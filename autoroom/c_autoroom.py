@@ -27,7 +27,8 @@ DEFAULT_EMOJIS = {
     "claim": "<:Crown:1279848977658810451>",  # Crown
     "transfer": "<:Person_With_Rotation:1279848936752021504>",  # Person_With_Rotation
     "info": "<:Information:1279848926383702056>",  # Info
-    "delete": "<:TrashCan:1279875131136806993>"  # TrashCan
+    "delete": "<:TrashCan:1279875131136806993>",  # TrashCan
+    "create_text": "<:Text:1234567890123456789>"  # Placeholder for create text channel emoji
 }
 
 REGION_OPTIONS = [
@@ -88,7 +89,8 @@ class AutoRoomCommands(MixinMeta, ABC):
             f"{DEFAULT_EMOJIS['claim']} Claim",
             f"{DEFAULT_EMOJIS['transfer']} Transfer",
             f"{DEFAULT_EMOJIS['info']} Info",
-            f"{DEFAULT_EMOJIS['delete']} Delete Channel"
+            f"{DEFAULT_EMOJIS['delete']} Delete Channel",
+            f"{DEFAULT_EMOJIS['create_text']} Create Text Channel"
         ])
         embed.description = description
 
@@ -101,7 +103,9 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             view = ConfirmationView(self, interaction, channel, "lock", "Lock the room?")
-            await interaction.edit_original_response(content="Are you sure you want to lock the room?", view=view)
+            text_channel = self.get_text_channel(channel)
+            if text_channel:
+                await text_channel.send(content="Are you sure you want to lock the room?", view=view)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -110,25 +114,21 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             view = ConfirmationView(self, interaction, channel, "unlock", "Unlock the room?")
-            await interaction.edit_original_response(content="Are you sure you want to unlock the room?", view=view)
+            text_channel = self.get_text_channel(channel)
+            if text_channel:
+                await text_channel.send(content="Are you sure you want to unlock the room?", view=view)
         except Exception as e:
             await self.handle_error(interaction, e)
 
-    async def private(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Make the AutoRoom private."""
+    async def create_text_channel(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Create a temporary text channel linked to the voice channel."""
         try:
-            await interaction.response.defer(ephemeral=True)
-            view = ConfirmationView(self, interaction, channel, "private", "Make the room private?")
-            await interaction.edit_original_response(content="Are you sure you want to make the room private?", view=view)
-        except Exception as e:
-            await self.handle_error(interaction, e)
-
-    async def public(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Make the AutoRoom public."""
-        try:
-            await interaction.response.defer(ephemeral=True)
-            view = ConfirmationView(self, interaction, channel, "public", "Make the room public?")
-            await interaction.edit_original_response(content="Are you sure you want to make the room public?", view=view)
+            category = channel.category
+            text_channel = await category.create_text_channel(name=f"{channel.name}-text")
+            await text_channel.set_permissions(interaction.guild.default_role, read_messages=False)
+            for member in channel.members:
+                await text_channel.set_permissions(member, read_messages=True, send_messages=True)
+            await interaction.response.send_message(f"Temporary text channel {text_channel.mention} created.", ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -157,32 +157,18 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             view = ConfirmationView(self, interaction, channel, "delete", "Delete the channel?")
-            await interaction.edit_original_response(content="Are you sure you want to delete the channel?", view=view)
+            text_channel = self.get_text_channel(channel)
+            if text_channel:
+                await text_channel.send(content="Are you sure you want to delete the channel?", view=view)
         except Exception as e:
             await self.handle_error(interaction, e)
 
     async def transfer_ownership(self, interaction: discord.Interaction, channel: discord.VoiceChannel, new_owner: discord.Member):
-        """Transfer ownership of the channel with confirmation from the new owner."""
+        """Transfer ownership of the channel."""
         try:
-            if new_owner not in channel.members:
-                await interaction.followup.send("The specified user is not in the voice channel.", ephemeral=True)
-                return
-
-            embed = discord.Embed(
-                title="Incoming Ownership Request",
-                description="You have been requested to take ownership of a voice channel. As the owner, you can manage the channel's settings and permissions."
-            )
-            view = TransferConfirmationView(self, interaction, channel, new_owner)
-
-            try:
-                await new_owner.send(embed=embed, view=view)
-                await interaction.followup.send(f"Ownership request sent to {new_owner.display_name}.", ephemeral=True)
-            except discord.Forbidden:
-                await interaction.followup.send(
-                    f"{new_owner.mention}, you have been requested to take ownership of the voice channel.",
-                    view=view,
-                    ephemeral=False
-                )
+            await self.config.channel(channel).owner.set(new_owner.id)
+            await channel.edit(name=f"{new_owner.display_name}'s Channel")
+            await interaction.response.send_message(f"Ownership transferred to {new_owner.display_name}.", ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -190,35 +176,28 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Process allowing or denying users/roles access to the AutoRoom."""
         try:
             if action == "allow":
-                # Allow everyone to connect
                 await channel.set_permissions(interaction.guild.default_role, connect=True)
-                await interaction.edit_original_response(content="The AutoRoom is now public.")
+                await interaction.followup.send(content="The AutoRoom is now public.", ephemeral=True)
             elif action == "deny":
-                # Deny everyone from connecting
                 await channel.set_permissions(interaction.guild.default_role, connect=False)
-                await interaction.edit_original_response(content="The AutoRoom is now private.")
+                await interaction.followup.send(content="The AutoRoom is now private.", ephemeral=True)
             elif action == "lock":
-                # Lock the room: visible but no one can join
                 await channel.set_permissions(interaction.guild.default_role, connect=False)
-                await interaction.edit_original_response(content="The AutoRoom is now locked.")
+                await interaction.followup.send(content="The AutoRoom is now locked.", ephemeral=True)
             elif action == "unlock":
-                # Unlock the room: visible and joinable
                 await channel.set_permissions(interaction.guild.default_role, connect=True)
-                await interaction.edit_original_response(content="The AutoRoom is now unlocked.")
+                await interaction.followup.send(content="The AutoRoom is now unlocked.", ephemeral=True)
             elif action == "private":
-                # Make the room private
                 await channel.set_permissions(interaction.guild.default_role, view_channel=False)
-                await interaction.edit_original_response(content="The AutoRoom is now private.")
+                await interaction.followup.send(content="The AutoRoom is now private.", ephemeral=True)
             elif action == "public":
-                # Make the room public
                 await channel.set_permissions(interaction.guild.default_role, view_channel=True)
-                await interaction.edit_original_response(content="The AutoRoom is now public.")
+                await interaction.followup.send(content="The AutoRoom is now public.", ephemeral=True)
             elif action == "delete":
-                # Delete the channel
                 await channel.delete()
-                await interaction.edit_original_response(content="The channel has been deleted.")
+                await interaction.followup.send(content="The channel has been deleted.", ephemeral=True)
             else:
-                await interaction.edit_original_response(content="Invalid action.")
+                await interaction.followup.send(content="Invalid action.", ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -232,13 +211,11 @@ class AutoRoomCommands(MixinMeta, ABC):
             owner_name = owner.display_name if owner else "None"
             owner_mention = owner.mention if owner else "None"
 
-            # Convert channel.created_at to naive datetime for subtraction
             channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
             bitrate = channel.bitrate // 1000  # Convert to kbps
             user_limit = channel.user_limit or "Unlimited"
             rtc_region = channel.rtc_region or "Automatic"
 
-            # Determine allowed and denied users
             allowed_users = []
             denied_users = []
             for target, overwrite in channel.overwrites.items():
@@ -335,6 +312,15 @@ class AutoRoomCommands(MixinMeta, ABC):
         # with open("error_log.txt", "a") as f:
         #     f.write(f"{datetime.datetime.now()}: {str(error)}\n")
 
+    def get_text_channel(self, voice_channel: discord.VoiceChannel) -> Optional[discord.TextChannel]:
+        """Find a text channel associated with the voice channel."""
+        category = voice_channel.category
+        if category:
+            for channel in category.channels:
+                if isinstance(channel, discord.TextChannel) and channel.name.startswith(voice_channel.name):
+                    return channel
+        return None
+
 # View Class for Control Panel
 
 class ControlPanelView(discord.ui.View):
@@ -384,19 +370,24 @@ class ControlPanelView(discord.ui.View):
     async def invite(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
         if voice_channel and await self.ensure_owner(interaction, voice_channel):
-            await interaction.response.send_modal(RequestJoinModal(self.cog, voice_channel))
+            text_channel = self.cog.get_text_channel(voice_channel)
+            if text_channel:
+                for member in voice_channel.members:
+                    if member != interaction.user:
+                        await member.send(f"{interaction.user.display_name} wants you to join their voice channel. Click here to join: {text_channel.mention}")
+                await interaction.response.send_message("Invite sent to all members in the voice channel.", ephemeral=True)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["ban"], custom_id="ban")
     async def ban(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
         if voice_channel and await self.ensure_owner(interaction, voice_channel):
-            await interaction.response.send_modal(DenyModal(self.cog, voice_channel))
+            await interaction.response.send_modal(DenyAllowModal(self.cog, voice_channel, action="deny"))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["permit"], custom_id="permit")
     async def permit(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
         if voice_channel and await self.ensure_owner(interaction, voice_channel):
-            await interaction.response.send_modal(AllowModal(self.cog, voice_channel))
+            await interaction.response.send_modal(DenyAllowModal(self.cog, voice_channel, action="allow"))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["rename"], custom_id="rename")
     async def rename(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -440,6 +431,12 @@ class ControlPanelView(discord.ui.View):
         if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.delete_channel(interaction, voice_channel)
 
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["create_text"], custom_id="create_text")
+    async def create_text(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
+            await self.cog.create_text_channel(interaction, voice_channel)
+
 # Confirmation View for Actions
 
 class ConfirmationView(discord.ui.View):
@@ -467,40 +464,13 @@ class ConfirmationView(discord.ui.View):
         await interaction.response.edit_message(content=f"{self.prompt} cancelled.", view=None)
         self.stop()
 
-# Transfer Confirmation View
-
-class TransferConfirmationView(discord.ui.View):
-    def __init__(self, cog, interaction, channel, new_owner):
-        super().__init__()
-        self.cog = cog
-        self.interaction = interaction
-        self.channel = channel
-        self.new_owner = new_owner
-
-    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success)
-    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user != self.new_owner:
-            await interaction.response.send_message("You cannot accept this transfer.", ephemeral=True)
-            return
-        await self.cog.config.channel(self.channel).owner.set(self.new_owner.id)
-        await self.channel.edit(name=f"{self.new_owner.display_name}'s Channel")
-        await interaction.response.send_message(f"Ownership transferred to {self.new_owner.display_name}.", ephemeral=True)
-        self.stop()
-
-    @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger)
-    async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user != self.new_owner:
-            await interaction.response.send_message("You cannot decline this transfer.", ephemeral=True)
-            return
-        await interaction.response.send_message("Transfer declined.", ephemeral=True)
-        self.stop()
-
 # Modal Classes
 
-class AllowModal(discord.ui.Modal, title="Allow User or Role"):
-    def __init__(self, cog, channel):
+class DenyAllowModal(discord.ui.Modal, title="Deny/Allow User or Role"):
+    def __init__(self, cog, channel, action):
         self.cog = cog
         self.channel = channel
+        self.action = action
         super().__init__()
 
     role_or_user_input = discord.ui.TextInput(label="Role/User ID or Mention", custom_id="role_or_user_input", style=discord.TextStyle.short)
@@ -513,47 +483,19 @@ class AllowModal(discord.ui.Modal, title="Allow User or Role"):
             role = await self.cog._get_role_from_input(interaction.guild, input_value)
 
             if user:
-                await self.channel.set_permissions(user, connect=True)
-                await interaction.followup.send(f"{user.display_name} has been allowed to join the channel.", ephemeral=True)
+                permission = True if self.action == "allow" else False
+                await self.channel.set_permissions(user, connect=permission)
+                await interaction.followup.send(f"{user.display_name} has been {'allowed' if permission else 'denied'} access to the channel.", ephemeral=True)
             elif role:
+                permission = True if self.action == "allow" else False
                 for member in self.channel.members:
                     if role in member.roles:
-                        await self.channel.set_permissions(member, connect=True)
-                await interaction.followup.send(f"Role {role.name} has been allowed to join the channel.", ephemeral=True)
+                        await self.channel.set_permissions(member, connect=permission)
+                await interaction.followup.send(f"Role {role.name} has been {'allowed' if permission else 'denied'} access to the channel.", ephemeral=True)
             else:
                 await interaction.followup.send("Role or user not found. Please enter a valid ID or mention.", ephemeral=True)
         except Exception as e:
             await self.cog.handle_error(interaction, e)
-
-
-class DenyModal(discord.ui.Modal, title="Deny User or Role"):
-    def __init__(self, cog, channel):
-        self.cog = cog
-        self.channel = channel
-        super().__init__()
-
-    role_or_user_input = discord.ui.TextInput(label="Role/User ID or Mention", custom_id="role_or_user_input", style=discord.TextStyle.short)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            await interaction.response.defer(ephemeral=True)
-            input_value = self.role_or_user_input.value
-            user = await self.cog._get_user_from_input(interaction.guild, input_value)
-            role = await self.cog._get_role_from_input(interaction.guild, input_value)
-
-            if user:
-                await self.channel.set_permissions(user, connect=False)
-                await interaction.followup.send(f"{user.display_name} has been denied access to the channel.", ephemeral=True)
-            elif role:
-                for member in self.channel.members:
-                    if role in member.roles:
-                        await self.channel.set_permissions(member, connect=False)
-                await interaction.followup.send(f"Role {role.name} has been denied access to the channel.", ephemeral=True)
-            else:
-                await interaction.followup.send("Role or user not found. Please enter a valid ID or mention.", ephemeral=True)
-        except Exception as e:
-            await self.cog.handle_error(interaction, e)
-
 
 class ChangeBitrateModal(discord.ui.Modal, title="Change Bitrate"):
     def __init__(self, cog, channel):
@@ -577,7 +519,6 @@ class ChangeBitrateModal(discord.ui.Modal, title="Change Bitrate"):
         except Exception as e:
             await self.cog.handle_error(interaction, e)
 
-
 class ChangeNameModal(discord.ui.Modal, title="Change Channel Name"):
     def __init__(self, cog, channel):
         self.cog = cog
@@ -595,31 +536,6 @@ class ChangeNameModal(discord.ui.Modal, title="Change Channel Name"):
                 await interaction.followup.send(f"Channel name changed to {new_name}.", ephemeral=True)
         except Exception as e:
             await self.cog.handle_error(interaction, e)
-
-
-class RequestJoinModal(discord.ui.Modal, title="Request User to Join"):
-    def __init__(self, cog, channel):
-        self.cog = cog
-        self.channel = channel
-        super().__init__()
-
-    user_input = discord.ui.TextInput(label="User ID or Username", custom_id="user_input", style=discord.TextStyle.short)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            await interaction.response.defer(ephemeral=True)
-            user_input = self.user_input.value
-            user = await self.cog._get_user_from_input(interaction.guild, user_input)
-            if user:
-                requester_name = interaction.user.display_name
-                channel_link = f"https://discord.com/channels/{interaction.guild.id}/{self.channel.id}"
-                await user.send(f"{requester_name} has requested that you join their voice channel. Click [here]({channel_link}) to join!")
-                await interaction.followup.send(f"Request sent to {user.display_name}.", ephemeral=True)
-            else:
-                await interaction.followup.send("User not found. Please enter a valid user ID or username.", ephemeral=True)
-        except Exception as e:
-            await self.cog.handle_error(interaction, e)
-
 
 class TransferOwnershipModal(discord.ui.Modal, title="Transfer Ownership"):
     def __init__(self, cog, channel):
@@ -641,7 +557,6 @@ class TransferOwnershipModal(discord.ui.Modal, title="Transfer Ownership"):
                 await interaction.followup.send("User not found or not in the channel. Please enter a valid user ID or mention.", ephemeral=True)
         except Exception as e:
             await self.cog.handle_error(interaction, e)
-
 
 class SetUserLimitModal(discord.ui.Modal, title="Set User Limit"):
     def __init__(self, cog, channel):
@@ -667,7 +582,6 @@ class SetUserLimitModal(discord.ui.Modal, title="Set User Limit"):
             )
         except Exception as e:
             await self.cog.handle_error(interaction, e)
-
 
 class RegionSelectView(discord.ui.View):
     def __init__(self, cog, channel):
