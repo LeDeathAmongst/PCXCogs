@@ -52,7 +52,12 @@ class AutoRoomCommands(MixinMeta, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-        self.config.register_guild(control_panel_message=None)
+
+        # Register the configuration schema for the guild
+        default_guild = {
+            "control_panel_message": None,
+        }
+        self.config.register_guild(**default_guild)
 
     @staticmethod
     def parse_emoji(emoji_str):
