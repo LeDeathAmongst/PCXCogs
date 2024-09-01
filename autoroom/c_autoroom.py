@@ -173,10 +173,15 @@ class AutoRoomCommands(MixinMeta, ABC):
                 description="You have been requested to take ownership of a voice channel. As the owner, you can manage the channel's settings and permissions."
             )
             view = TransferConfirmationView(self, interaction, channel, new_owner)
-            await new_owner.send(embed=embed, view=view)
-            await interaction.followup.send(f"Ownership request sent to {new_owner.display_name}.", ephemeral=True)
-        except discord.Forbidden:
-            await interaction.followup.send("I cannot send a message to the specified user. They may have DMs disabled.", ephemeral=True)
+
+            try:
+                await new_owner.send(embed=embed, view=view)
+                await interaction.followup.send(f"Ownership request sent to {new_owner.display_name}.", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.followup.send(
+                    f"{new_owner.mention}, you have been requested to take ownership of the voice channel. Please check your DM settings.",
+                    ephemeral=False
+                )
         except Exception as e:
             await self.handle_error(interaction, e)
 
