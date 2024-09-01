@@ -101,7 +101,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             view = ConfirmationView(self, interaction, channel, "lock", "Lock the room?")
-            await interaction.followup.send("Are you sure you want to lock the room?", view=view, ephemeral=True)
+            await interaction.edit_original_response(content="Are you sure you want to lock the room?", view=view)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -110,7 +110,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             view = ConfirmationView(self, interaction, channel, "unlock", "Unlock the room?")
-            await interaction.followup.send("Are you sure you want to unlock the room?", view=view, ephemeral=True)
+            await interaction.edit_original_response(content="Are you sure you want to unlock the room?", view=view)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -119,7 +119,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             view = ConfirmationView(self, interaction, channel, "private", "Make the room private?")
-            await interaction.followup.send("Are you sure you want to make the room private?", view=view, ephemeral=True)
+            await interaction.edit_original_response(content="Are you sure you want to make the room private?", view=view)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -128,7 +128,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             view = ConfirmationView(self, interaction, channel, "public", "Make the room public?")
-            await interaction.followup.send("Are you sure you want to make the room public?", view=view, ephemeral=True)
+            await interaction.edit_original_response(content="Are you sure you want to make the room public?", view=view)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -157,16 +157,20 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             view = ConfirmationView(self, interaction, channel, "delete", "Delete the channel?")
-            await interaction.followup.send("Are you sure you want to delete the channel?", view=view, ephemeral=True)
+            await interaction.edit_original_response(content="Are you sure you want to delete the channel?", view=view)
         except Exception as e:
             await self.handle_error(interaction, e)
 
     async def transfer_ownership(self, interaction: discord.Interaction, channel: discord.VoiceChannel, new_owner: discord.Member):
         """Transfer ownership of the channel with confirmation from the new owner."""
         try:
-            await interaction.response.defer(ephemeral=True)
+            embed = discord.Embed(
+                title="Incoming Ownership Request",
+                description="You have been requested to take ownership of a voice channel. As the owner, you can manage the channel's settings and permissions."
+            )
             view = TransferConfirmationView(self, interaction, channel, new_owner)
-            await interaction.followup.send(f"{new_owner.display_name}, do you accept ownership of the channel?", view=view, ephemeral=True)
+            await new_owner.send(embed=embed, view=view)
+            await interaction.followup.send(f"Ownership request sent to {new_owner.display_name}.", ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -176,33 +180,33 @@ class AutoRoomCommands(MixinMeta, ABC):
             if action == "allow":
                 # Allow everyone to connect
                 await channel.set_permissions(interaction.guild.default_role, connect=True)
-                await interaction.followup.send("The AutoRoom is now public.", ephemeral=True)
+                await interaction.edit_original_response(content="The AutoRoom is now public.")
             elif action == "deny":
                 # Deny everyone from connecting
                 await channel.set_permissions(interaction.guild.default_role, connect=False)
-                await interaction.followup.send("The AutoRoom is now private.", ephemeral=True)
+                await interaction.edit_original_response(content="The AutoRoom is now private.")
             elif action == "lock":
                 # Lock the room: visible but no one can join
                 await channel.set_permissions(interaction.guild.default_role, connect=False)
-                await interaction.followup.send("The AutoRoom is now locked.", ephemeral=True)
+                await interaction.edit_original_response(content="The AutoRoom is now locked.")
             elif action == "unlock":
                 # Unlock the room: visible and joinable
                 await channel.set_permissions(interaction.guild.default_role, connect=True)
-                await interaction.followup.send("The AutoRoom is now unlocked.", ephemeral=True)
+                await interaction.edit_original_response(content="The AutoRoom is now unlocked.")
             elif action == "private":
                 # Make the room private
                 await channel.set_permissions(interaction.guild.default_role, view_channel=False)
-                await interaction.followup.send("The AutoRoom is now private.", ephemeral=True)
+                await interaction.edit_original_response(content="The AutoRoom is now private.")
             elif action == "public":
                 # Make the room public
                 await channel.set_permissions(interaction.guild.default_role, view_channel=True)
-                await interaction.followup.send("The AutoRoom is now public.", ephemeral=True)
+                await interaction.edit_original_response(content="The AutoRoom is now public.")
             elif action == "delete":
                 # Delete the channel
                 await channel.delete()
-                await interaction.followup.send("The channel has been deleted.", ephemeral=True)
+                await interaction.edit_original_response(content="The channel has been deleted.")
             else:
-                await interaction.followup.send("Invalid action.", ephemeral=True)
+                await interaction.edit_original_response(content="Invalid action.")
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -448,7 +452,7 @@ class ConfirmationView(discord.ui.View):
         if interaction.user != self.interaction.user:
             await interaction.response.send_message("You cannot cancel this action.", ephemeral=True)
             return
-        await interaction.response.send_message(f"{self.prompt} cancelled.", ephemeral=True)
+        await interaction.response.edit_message(content=f"{self.prompt} cancelled.", view=None)
         self.stop()
 
 # Transfer Confirmation View
