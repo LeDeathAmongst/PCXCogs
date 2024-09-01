@@ -131,7 +131,7 @@ class AutoRoomCommands(MixinMeta, ABC):
             await self.autoroom_settings(interaction, voice_channel)
         elif custom_id == "users":
             view = SetUserLimitView(self, voice_channel)
-            await interaction.response.send_message("Select a user limit:", view=view, ephemeral=True)
+            await interaction.followup.send("Select a user limit:", view=view, ephemeral=True)
         elif custom_id == "region":
             await self.change_region(interaction, voice_channel)
         elif custom_id == "transfer":
@@ -141,27 +141,28 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     async def info(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Provide information about the current voice channel."""
-        autoroom_info = await self.get_autoroom_info(channel)
-        owner_id = autoroom_info.get("owner")
-        owner = interaction.guild.get_member(owner_id)
-        owner_name = owner.display_name if owner else "None"
-        owner_mention = owner.mention if owner else "None"
+        if not interaction.response.is_done():
+            autoroom_info = await self.get_autoroom_info(channel)
+            owner_id = autoroom_info.get("owner")
+            owner = interaction.guild.get_member(owner_id)
+            owner_name = owner.display_name if owner else "None"
+            owner_mention = owner.mention if owner else "None"
 
-        # Convert channel.created_at to naive datetime for subtraction
-        channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
-        bitrate = channel.bitrate // 1000  # Convert to kbps
-        user_limit = channel.user_limit or "Unlimited"
-        rtc_region = channel.rtc_region or "Automatic"
+            # Convert channel.created_at to naive datetime for subtraction
+            channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
+            bitrate = channel.bitrate // 1000  # Convert to kbps
+            user_limit = channel.user_limit or "Unlimited"
+            rtc_region = channel.rtc_region or "Automatic"
 
-        embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
-        embed.add_field(name="Owner", value=f"{owner_name} ({owner_mention})")
-        embed.add_field(name="Age", value=humanize_timedelta(timedelta=channel_age))
-        embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
-        embed.add_field(name="User Limit", value=user_limit)
-        embed.add_field(name="Region", value=rtc_region)
-        embed.add_field(name="Private", value="Yes" if self._get_autoroom_type(channel, interaction.guild.default_role) == "private" else "No")
+            embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
+            embed.add_field(name="Owner", value=f"{owner_name} ({owner_mention})")
+            embed.add_field(name="Age", value=humanize_timedelta(timedelta=channel_age))
+            embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
+            embed.add_field(name="User Limit", value=user_limit)
+            embed.add_field(name="Region", value=rtc_region)
+            embed.add_field(name="Private", value="Yes" if self._get_autoroom_type(channel, interaction.guild.default_role) == "private" else "No")
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def autoroom_settings(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Display current settings."""
