@@ -5,7 +5,7 @@ from typing import Any, Optional
 import discord
 from PIL import Image, ImageDraw, ImageFont
 import io
-from redbot.core import commands
+from redbot.core import commands, Config
 from redbot.core.utils.chat_formatting import humanize_timedelta
 
 from .abc import MixinMeta
@@ -14,27 +14,46 @@ MAX_CHANNEL_NAME_LENGTH = 100
 MAX_BITRATE = 96  # Maximum bitrate in kbps
 DEFAULT_REGION = "us-central"  # Set your preferred default region here
 
+DEFAULT_EMOJIS = {
+    "lock": "🔒",  # Locked
+    "unlock": "🔓",  # Unlocked
+    "limit": "🔢",  # People
+    "hide": "🙈",  # Crossed_Eye
+    "unhide": "👁 ️",  # Eye
+    "invite": "📢",  # Invite/Request Join
+    "ban": "🔨",  # Hammer
+    "permit": "✅",  # Check_Mark
+    "rename": "✏️",  # Pensil
+    "bitrate": "🎵",  # Headphones
+    "region": "🌐",  # Servers
+    "claim": "👑",  # Crown
+    "transfer": "🔄"  # Person_With_Rotation
+}
+
 class AutoRoomCommands(MixinMeta, ABC):
     """The autoroom command."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.config = Config.get_conf(self, identifier=1234567890)
+        self.config.register_guild(emojis=DEFAULT_EMOJIS)
         self.image_path = "control_panel_image.png"
         self.generate_image()
 
-    def generate_image(self):
+    async def generate_image(self):
         """Generate an image with button names and emojis."""
-        width, height = 700, 200
+        emojis = await self.config.emojis()
+        width, height = 700, 200  # Adjusted height for fewer buttons
         image = Image.new('RGB', (width, height), color=(255, 248, 240))
         draw = ImageDraw.Draw(image)
         font = ImageFont.load_default()
 
-        # Define button labels and emojis
+        # Define button labels
         labels = [
-            ("Lock", "🔒"), ("Unlock", "🔓"), ("Limit", "🔢"), ("Hide", "🙈"),
-            ("Unhide", "🙉"), ("Invite", "📨"), ("Ban", "🚫"), ("Permit", "✅"),
-            ("Rename", "✏️"), ("Bitrate", "🎵"), ("Region", "🌐"), ("Claim", "🛡 ️"),
-            ("Transfer", "🔄")
+            ("Lock", emojis["lock"]), ("Unlock", emojis["unlock"]), ("Limit", emojis["limit"]), ("Hide", emojis["hide"]),
+            ("Unhide", emojis["unhide"]), ("Invite", emojis["invite"]), ("Ban", emojis["ban"]), ("Permit", emojis["permit"]),
+            ("Rename", emojis["rename"]), ("Bitrate", emojis["bitrate"]), ("Region", emojis["region"]), ("Claim", emojis["claim"]),
+            ("Transfer", emojis["transfer"])
         ]
 
         # Draw labels on the image
@@ -47,6 +66,16 @@ class AutoRoomCommands(MixinMeta, ABC):
         # Save the image locally
         image.save(self.image_path)
 
+    @commands.command(name="setemojis")
+    @commands.guild_only()
+    async def set_emojis(self, ctx: commands.Context, **emojis):
+        """Set custom emojis for the control panel buttons."""
+        current_emojis = await self.config.emojis()
+        current_emojis.update(emojis)
+        await self.config.emojis.set(current_emojis)
+        await ctx.send("Custom emojis have been set.")
+        await self.generate_image()  # Regenerate the image with updated emojis
+
     @commands.command(name="controlpanel")
     @commands.guild_only()
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
@@ -57,21 +86,24 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         view = discord.ui.View()
 
+        # Get current emojis
+        emojis = await self.config.emojis()
+
         # Define buttons with emojis
         buttons = {
-            "lock": "🔒",
-            "unlock": "🔓",
-            "limit": "🔢",
-            "hide": "🙈",
-            "unhide": "🙉",
-            "invite": "📨",
-            "ban": "🚫",
-            "permit": "✅",
-            "rename": "✏️",
-            "bitrate": "🎵",
-            "region": "🌐",
-            "claim": "🛡 ️",
-            "transfer": "🔄"
+            "lock": emojis["lock"],
+            "unlock": emojis["unlock"],
+            "limit": emojis["limit"],
+            "hide": emojis["hide"],
+            "unhide": emojis["unhide"],
+            "invite": emojis["invite"],
+            "ban": emojis["ban"],
+            "permit": emojis["permit"],
+            "rename": emojis["rename"],
+            "bitrate": emojis["bitrate"],
+            "region": emojis["region"],
+            "claim": emojis["claim"],
+            "transfer": emojis["transfer"]
         }
 
         # Add buttons to the view in the specified order
@@ -137,7 +169,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         elif custom_id == "unhide":
             await self.public(interaction, voice_channel)
         elif custom_id == "invite":
-            await interaction.response.send_modal(AllowModal(self, voice_channel))
+            await interaction.response.send_modal(RequestJoinModal(self, voice_channel))
         elif custom_id == "ban":
             await interaction.response.send_modal(DenyModal(self, voice_channel))
         elif custom_id == "permit":
@@ -314,6 +346,26 @@ class ChangeNameModal(discord.ui.Modal, title="Change Channel Name"):
         if self.channel:
             await self.channel.edit(name=new_name)
             await interaction.response.send_message(f"Channel name changed to {new_name}.", ephemeral=True)
+
+
+class RequestJoinModal(discord.ui.Modal, title="Request User to Join"):
+    def __init__(self, cog, channel):
+        self.cog = cog
+        self.channel = channel
+        super().__init__()
+
+    user_input = discord.ui.TextInput(label="User ID or Username", custom_id="user_input", style=discord.TextStyle.short)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_input = self.user_input.value
+        user = await self.cog._get_user_from_input(interaction.guild, user_input)
+        if user:
+            requester_name = interaction.user.display_name
+            channel_link = f"https://discord.com/channels/{interaction.guild.id}/{self.channel.id}"
+            await user.send(f"{requester_name} has requested that you join their voice channel. Click [here]({channel_link}) to join!")
+            await interaction.response.send_message(f"Request sent to {user.display_name}.", ephemeral=True)
+        else:
+            await interaction.response.send_message("User not found. Please enter a valid user ID or username.", ephemeral=True)
 
 
 class SetUserLimitView(discord.ui.View):
