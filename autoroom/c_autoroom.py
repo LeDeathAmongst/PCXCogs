@@ -4,10 +4,9 @@ from typing import Any, Optional
 
 import discord
 from redbot.core import commands
-from redbot.core.utils.chat_formatting import error, humanize_timedelta
+from redbot.core.utils.chat_formatting import humanize_timedelta
 
 from .abc import MixinMeta
-from .pcx_lib import Perms, SettingDisplay, delete
 
 MAX_CHANNEL_NAME_LENGTH = 100
 MAX_BITRATE = 96  # Maximum bitrate in kbps
@@ -41,26 +40,25 @@ class AutoRoomCommands(MixinMeta, ABC):
     @commands.guild_only()
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
         """Send the master control panel for the guild."""
-        # Use the default description
         embed = discord.Embed(title="Master Control Panel", description=DEFAULT_DESCRIPTION, color=0x7289da)
         view = discord.ui.View()
 
-        # Define fixed buttons
+        # Define fixed buttons with appropriate emojis
         buttons = {
-            "allow": {"emoji": "✅", "name": "Allow", "style": discord.ButtonStyle.primary},
-            "bitrate": {"emoji": "🎵", "name": "Bitrate", "style": discord.ButtonStyle.primary},
-            "claim": {"emoji": "🏆", "name": "Claim", "style": discord.ButtonStyle.primary},
-            "deny": {"emoji": "🚫", "name": "Deny", "style": discord.ButtonStyle.primary},
-            "locked": {"emoji": "🔒", "name": "Locked", "style": discord.ButtonStyle.primary},
-            "unlock": {"emoji": "🔓", "name": "Unlock", "style": discord.ButtonStyle.primary},
-            "name": {"emoji": "📝", "name": "Name", "style": discord.ButtonStyle.primary},
-            "private": {"emoji": "🔑", "name": "Private", "style": discord.ButtonStyle.primary},
-            "public": {"emoji": "🌐", "name": "Public", "style": discord.ButtonStyle.primary},
-            "settings": {"emoji": "⚙️", "name": "Settings", "style": discord.ButtonStyle.primary},
-            "users": {"emoji": "👥", "name": "Users", "style": discord.ButtonStyle.primary},
-            "region": {"emoji": "🌍", "name": "Region", "style": discord.ButtonStyle.primary},
-            "transfer": {"emoji": "🔄", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
-            "info": {"emoji": "ℹ️", "name": "Info", "style": discord.ButtonStyle.primary},
+            "allow": {"emoji": "", "name": "Allow", "style": discord.ButtonStyle.primary},
+            "bitrate": {"emoji": "", "name": "Bitrate", "style": discord.ButtonStyle.primary},
+            "claim": {"emoji": "", "name": "Claim", "style": discord.ButtonStyle.primary},
+            "deny": {"emoji": "", "name": "Deny", "style": discord.ButtonStyle.primary},
+            "locked": {"emoji": "", "name": "Locked", "style": discord.ButtonStyle.primary},
+            "unlock": {"emoji": "", "name": "Unlock", "style": discord.ButtonStyle.primary},
+            "name": {"emoji": "", "name": "Name", "style": discord.ButtonStyle.primary},
+            "private": {"emoji": "", "name": "Private", "style": discord.ButtonStyle.primary},
+            "public": {"emoji": "", "name": "Public", "style": discord.ButtonStyle.primary},
+            "settings": {"emoji": "", "name": "Settings", "style": discord.ButtonStyle.primary},
+            "users": {"emoji": "", "name": "Users", "style": discord.ButtonStyle.primary},
+            "region": {"emoji": "", "name": "Region", "style": discord.ButtonStyle.primary},
+            "transfer": {"emoji": "", "name": "Transfer Owner", "style": discord.ButtonStyle.primary},
+            "info": {"emoji": "ℹ", "name": "Info", "style": discord.ButtonStyle.primary},
         }
 
         for key, button in buttons.items():
@@ -83,14 +81,12 @@ class AutoRoomCommands(MixinMeta, ABC):
         voice_channel = self._get_current_voice_channel(interaction.user)
 
         if not voice_channel:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("You must be in a voice channel to use this command.", ephemeral=True)
+            await interaction.response.send_message("You must be in a voice channel to use this command.", ephemeral=True)
             return
 
         autoroom_info = await self.get_autoroom_info(voice_channel)
         if not autoroom_info:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("This voice channel is not managed by AutoRoom.", ephemeral=True)
+            await interaction.response.send_message("This voice channel is not managed by AutoRoom.", ephemeral=True)
             return
 
         # Check if the user is the owner of the channel or has override permissions
@@ -98,15 +94,13 @@ class AutoRoomCommands(MixinMeta, ABC):
             owner_id = autoroom_info.get("owner")
             owner = interaction.guild.get_member(owner_id)
             owner_name = owner.display_name if owner else "Unknown"
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    f"Only {owner_name} or an admin can control the panel.", ephemeral=True
-                )
+            await interaction.response.send_message(
+                f"Only {owner_name} or an admin can control the panel.", ephemeral=True
+            )
             return
 
         # Defer the interaction if needed
-        if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
 
         # Handle the interaction
         if custom_id == "allow":
@@ -141,28 +135,42 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     async def info(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Provide information about the current voice channel."""
-        if not interaction.response.is_done():
-            autoroom_info = await self.get_autoroom_info(channel)
-            owner_id = autoroom_info.get("owner")
-            owner = interaction.guild.get_member(owner_id)
-            owner_name = owner.display_name if owner else "None"
-            owner_mention = owner.mention if owner else "None"
+        autoroom_info = await self.get_autoroom_info(channel)
+        owner_id = autoroom_info.get("owner")
+        owner = interaction.guild.get_member(owner_id)
+        owner_name = owner.display_name if owner else "None"
+        owner_mention = owner.mention if owner else "None"
 
-            # Convert channel.created_at to naive datetime for subtraction
-            channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
-            bitrate = channel.bitrate // 1000  # Convert to kbps
-            user_limit = channel.user_limit or "Unlimited"
-            rtc_region = channel.rtc_region or "Automatic"
+        # Convert channel.created_at to naive datetime for subtraction
+        channel_age = datetime.datetime.utcnow() - channel.created_at.replace(tzinfo=None)
+        bitrate = channel.bitrate // 1000  # Convert to kbps
+        user_limit = channel.user_limit or "Unlimited"
+        rtc_region = channel.rtc_region or "Automatic"
 
-            embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
-            embed.add_field(name="Owner", value=f"{owner_name} ({owner_mention})")
-            embed.add_field(name="Age", value=humanize_timedelta(timedelta=channel_age))
-            embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
-            embed.add_field(name="User Limit", value=user_limit)
-            embed.add_field(name="Region", value=rtc_region)
-            embed.add_field(name="Private", value="Yes" if self._get_autoroom_type(channel, interaction.guild.default_role) == "private" else "No")
+        # Determine allowed and denied users
+        allowed_users = []
+        denied_users = []
+        for target, overwrite in channel.overwrites.items():
+            if isinstance(target, discord.Member):
+                if overwrite.connect is True:
+                    allowed_users.append(target.mention)
+                elif overwrite.connect is False:
+                    denied_users.append(target.mention)
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+        allowed_users_text = ", ".join(allowed_users) if allowed_users else "No One"
+        denied_users_text = ", ".join(denied_users) if denied_users else "No One"
+
+        embed = discord.Embed(title=f"Info for {channel.name}", color=0x7289da)
+        embed.add_field(name="Owner", value=f"{owner_name} ({owner_mention})")
+        embed.add_field(name="Age", value=humanize_timedelta(timedelta=channel_age))
+        embed.add_field(name="Bitrate", value=f"{bitrate} kbps")
+        embed.add_field(name="User Limit", value=user_limit)
+        embed.add_field(name="Region", value=rtc_region)
+        embed.add_field(name="Private", value="Yes" if self._get_autoroom_type(channel, interaction.guild.default_role) == "private" else "No")
+        embed.add_field(name="Allowed Users", value=allowed_users_text)
+        embed.add_field(name="Denied Users", value=denied_users_text)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def autoroom_settings(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Display current settings."""
@@ -181,8 +189,8 @@ class AutoRoomCommands(MixinMeta, ABC):
         embed = discord.Embed(title=f"Settings for {channel.name}", color=0x7289da)
         embed.add_field(name="Owner", value=owner_name)
         embed.add_field(name="Access Type", value=access_type.capitalize())
-        embed.add_field(name="Allowed Users", value=", ".join(allowed_users) or "None")
-        embed.add_field(name="Denied Users", value=", ".join(denied_users) or "None")
+        embed.add_field(name="Allowed Users", value=", ".join(allowed_users) or "No One")
+        embed.add_field(name="Denied Users", value=", ".join(denied_users) or "No One")
         embed.add_field(name="Bitrate", value=f"{channel.bitrate // 1000} kbps")
         embed.add_field(name="User Limit", value=channel.user_limit or "Unlimited")
 
