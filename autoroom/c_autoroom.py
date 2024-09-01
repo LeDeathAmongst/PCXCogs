@@ -28,7 +28,7 @@ DEFAULT_EMOJIS = {
     "transfer": "<:Person_With_Rotation:1279848936752021504>",  # Person_With_Rotation
     "info": "<:Information:1279848926383702056>",  # Info
     "delete": "<:TrashCan:1279875131136806993>",  # TrashCan
-    "create_text": "<:SpeachBubble:1279890650535428198>"  # Placeholder for create text channel emoji
+    "create_text": "<:Text:1234567890123456789>"  # Placeholder for create text channel emoji
 }
 
 REGION_OPTIONS = [
@@ -125,10 +125,17 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Create a temporary text channel linked to the voice channel."""
         try:
             category = channel.category
-            text_channel = await category.create_text_channel(name=f"{channel.name}-text")
+            text_channel = await category.create_text_channel(
+                name=f"{channel.name}-text",
+                topic=f"Voice Channel ID: {channel.id}"
+            )
             await text_channel.set_permissions(interaction.guild.default_role, read_messages=False)
             for member in channel.members:
                 await text_channel.set_permissions(member, read_messages=True, send_messages=True)
+
+            # Update the voice channel topic with the text channel ID
+            await channel.edit(topic=f"Text Channel ID: {text_channel.id}")
+
             await interaction.response.send_message(f"Temporary text channel {text_channel.mention} created.", ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
@@ -174,27 +181,40 @@ class AutoRoomCommands(MixinMeta, ABC):
     async def _process_allow_deny(self, interaction: discord.Interaction, action: str, channel: discord.VoiceChannel):
         """Process allowing or denying users/roles access to the AutoRoom."""
         try:
+            text_channel = self.get_text_channel(channel)
+
             if action == "allow":
                 await channel.set_permissions(interaction.guild.default_role, connect=True)
+                if text_channel:
+                    await text_channel.set_permissions(interaction.guild.default_role, read_messages=True)
                 await interaction.followup.send(content="The AutoRoom is now public.", ephemeral=True)
             elif action == "deny":
                 await channel.set_permissions(interaction.guild.default_role, connect=False)
+                if text_channel:
+                    await text_channel.set_permissions(interaction.guild.default_role, read_messages=False)
                 await interaction.followup.send(content="The AutoRoom is now private.", ephemeral=True)
             elif action == "lock":
                 await channel.set_permissions(interaction.guild.default_role, connect=False)
+                if text_channel:
+                    await text_channel.set_permissions(interaction.guild.default_role, send_messages=False)
                 await interaction.followup.send(content="The AutoRoom is now locked.", ephemeral=True)
             elif action == "unlock":
                 await channel.set_permissions(interaction.guild.default_role, connect=True)
+                if text_channel:
+                    await text_channel.set_permissions(interaction.guild.default_role, send_messages=True)
                 await interaction.followup.send(content="The AutoRoom is now unlocked.", ephemeral=True)
             elif action == "private":
                 await channel.set_permissions(interaction.guild.default_role, view_channel=False)
+                if text_channel:
+                    await text_channel.set_permissions(interaction.guild.default_role, view_channel=False)
                 await interaction.followup.send(content="The AutoRoom is now private.", ephemeral=True)
             elif action == "public":
                 await channel.set_permissions(interaction.guild.default_role, view_channel=True)
+                if text_channel:
+                    await text_channel.set_permissions(interaction.guild.default_role, view_channel=True)
                 await interaction.followup.send(content="The AutoRoom is now public.", ephemeral=True)
             elif action == "delete":
                 await channel.delete()
-                text_channel = self.get_text_channel(channel)
                 if text_channel:
                     await text_channel.delete()
                 await interaction.followup.send(content="The channel has been deleted.", ephemeral=True)
@@ -319,7 +339,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         category = voice_channel.category
         if category:
             for channel in category.channels:
-                if isinstance(channel, discord.TextChannel) and channel.name.startswith(voice_channel.name):
+                if isinstance(channel, discord.TextChannel) and channel.topic and f"Voice Channel ID: {voice_channel.id}" in channel.topic:
                     return channel
         return None
 
@@ -587,6 +607,9 @@ class ChangeNameModal(discord.ui.Modal, title="Change Channel Name"):
             new_name = self.new_name.value
             if self.channel:
                 await self.channel.edit(name=new_name)
+                text_channel = self.cog.get_text_channel(self.channel)
+                if text_channel:
+                    await text_channel.edit(name=f"{new_name}-text")
                 await interaction.followup.send(f"Channel name changed to {new_name}.", ephemeral=True)
         except Exception as e:
             await self.cog.handle_error(interaction, e)
