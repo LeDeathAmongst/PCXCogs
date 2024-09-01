@@ -13,6 +13,7 @@ from .pcx_lib import Perms, SettingDisplay, delete
 
 MAX_CHANNEL_NAME_LENGTH = 100
 MAX_BITRATE = 96  # Maximum bitrate in kbps
+DEFAULT_REGION = "us-central"  # Set your preferred default region here
 
 DEFAULT_DESCRIPTION = (
     "Use the buttons below to manage your channel.\n\n"
@@ -37,26 +38,12 @@ class AutoRoomCommands(MixinMeta, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    @commands.group()
+    @commands.command(name="controlpanel")
     @commands.guild_only()
-    async def autoroom(self, ctx: commands.Context) -> None:
-        """Manage your AutoRoom."""
-
-    @autoroom.command(name="controlpanel")
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
-        """Send the control panel for your AutoRoom."""
-        voice_channel = self._get_current_voice_channel(ctx.author)
-        if not voice_channel:
-            await ctx.send("You must be in a voice channel to use this command.")
-            return
-
-        autoroom_info = await self.get_autoroom_info(voice_channel)
-        if not autoroom_info:
-            await ctx.send("This voice channel is not managed by AutoRoom.")
-            return
-
+        """Send the master control panel for the guild."""
         # Use the default description
-        embed = discord.Embed(title=f"Control Panel for {voice_channel.name}", description=DEFAULT_DESCRIPTION, color=0x7289da)
+        embed = discord.Embed(title="Master Control Panel", description=DEFAULT_DESCRIPTION, color=0x7289da)
         view = discord.ui.View()
 
         # Define fixed buttons
@@ -80,7 +67,7 @@ class AutoRoomCommands(MixinMeta, ABC):
             view.add_item(discord.ui.Button(
                 label=button["name"],
                 emoji=button["emoji"],
-                custom_id=f"{key}_{voice_channel.id}",
+                custom_id=key,
                 style=button["style"]
             ))
 
@@ -93,61 +80,57 @@ class AutoRoomCommands(MixinMeta, ABC):
             return
 
         custom_id = interaction.data['custom_id']
-        channel_id = int(custom_id.split('_')[-1])
-        channel = self.bot.get_channel(channel_id)
+        voice_channel = self._get_current_voice_channel(interaction.user)
 
-        if not channel or not isinstance(channel, discord.VoiceChannel):
-            await interaction.response.send_message("Channel not found.", ephemeral=True)
+        if not voice_channel:
+            await interaction.response.send_message("You must be in a voice channel to use this command.", ephemeral=True)
             return
 
-        if custom_id.startswith("info"):
-            await self.info(interaction, channel)
+        autoroom_info = await self.get_autoroom_info(voice_channel)
+        if not autoroom_info:
+            await interaction.response.send_message("This voice channel is not managed by AutoRoom.", ephemeral=True)
             return
 
-        # Check if the user is the owner of the channel
-        autoroom_info = await self.get_autoroom_info(channel)
-        if autoroom_info.get("owner") != interaction.user.id:
+        # Check if the user is the owner of the channel or has override permissions
+        if autoroom_info.get("owner") != interaction.user.id and not self._has_override_permissions(interaction.user, autoroom_info):
             owner_id = autoroom_info.get("owner")
             owner = interaction.guild.get_member(owner_id)
             owner_name = owner.display_name if owner else "Unknown"
             await interaction.response.send_message(
-                f"Only {owner_name} can control the panel.", ephemeral=True
+                f"Only {owner_name} or an admin can control the panel.", ephemeral=True
             )
             return
 
-        # Handle the interaction if the user is the owner
-        if custom_id.startswith("allow"):
-            await interaction.response.send_modal(AllowModal(self, channel))
-        elif custom_id.startswith("bitrate"):
-            await interaction.response.send_modal(ChangeBitrateModal(self, channel))
-        elif custom_id.startswith("claim"):
-            await self.claim(interaction, channel)
-        elif custom_id.startswith("deny"):
-            await interaction.response.send_modal(DenyModal(self, channel))
-        elif custom_id.startswith("locked"):
-            await self.locked(interaction, channel)
-        elif custom_id.startswith("name"):
-            await interaction.response.send_modal(ChangeNameModal(self, channel))
-        elif custom_id.startswith("private"):
-            await self.private(interaction, channel)
-        elif custom_id.startswith("public"):
-            await self.public(interaction, channel)
-        elif custom_id.startswith("settings"):
-            await self.autoroom_settings(interaction, channel)
-        elif custom_id.startswith("users"):
-            await interaction.response.send_modal(SetUserLimitModal(self, channel))
-        elif custom_id.startswith("region"):
-            await self.change_region(interaction, channel)
-        elif custom_id.startswith("transfer"):
-            await interaction.response.send_modal(TransferOwnerModal(self, channel))
+        # Handle the interaction
+        if custom_id == "allow":
+            await interaction.response.send_modal(AllowModal(self, voice_channel))
+        elif custom_id == "bitrate":
+            await interaction.response.send_modal(ChangeBitrateModal(self, voice_channel))
+        elif custom_id == "claim":
+            await self.claim(interaction, voice_channel)
+        elif custom_id == "deny":
+            await interaction.response.send_modal(DenyModal(self, voice_channel))
+        elif custom_id == "locked":
+            await self.locked(interaction, voice_channel)
+        elif custom_id == "name":
+            await interaction.response.send_modal(ChangeNameModal(self, voice_channel))
+        elif custom_id == "private":
+            await self.private(interaction, voice_channel)
+        elif custom_id == "public":
+            await self.public(interaction, voice_channel)
+        elif custom_id == "settings":
+            await self.autoroom_settings(interaction, voice_channel)
+        elif custom_id == "users":
+            await interaction.response.send_modal(SetUserLimitModal(self, voice_channel))
+        elif custom_id == "region":
+            await self.change_region(interaction, voice_channel)
+        elif custom_id == "transfer":
+            await interaction.response.send_modal(TransferOwnerModal(self, voice_channel))
+        elif custom_id == "info":
+            await self.info(interaction, voice_channel)
 
     async def info(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Provide information about the current voice channel."""
-        voice_channel = self._get_current_voice_channel(interaction.user)
-        if not voice_channel or voice_channel.id != channel.id:
-            await interaction.response.send_message("You must be in the voice channel to view its info.", ephemeral=True)
-            return
-
         autoroom_info = await self.get_autoroom_info(channel)
         owner_id = autoroom_info.get("owner")
         owner = interaction.guild.get_member(owner_id)
@@ -244,6 +227,14 @@ class AutoRoomCommands(MixinMeta, ABC):
         view = discord.ui.View()
         view.add_item(select)
         await interaction.response.send_message("Select a voice region:", view=view, ephemeral=True)
+
+    def _has_override_permissions(self, user: discord.Member, autoroom_info: dict) -> bool:
+        """Check if the user has override permissions."""
+        if user.guild_permissions.administrator:
+            return True
+        if user.id == user.guild.owner_id:
+            return True
+        return False
 
     async def _process_allow_deny(self, interaction: discord.Interaction, action: str, channel: discord.VoiceChannel):
         """Process allowing or denying users/roles access to the AutoRoom."""
