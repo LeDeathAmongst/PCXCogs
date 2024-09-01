@@ -69,94 +69,9 @@ class AutoRoomCommands(MixinMeta, ABC):
         ])
         embed.description = description
 
-        view = discord.ui.View()
-
-        # Define buttons with emojis
-        buttons = DEFAULT_EMOJIS
-
-        # Add buttons to the view in the specified order
-        button_order = [
-            ["lock", "unlock", "limit", "hide"],
-            ["unhide", "invite", "ban", "permit"],
-            ["rename", "bitrate", "region", "claim"],
-            ["transfer", "info"]
-        ]
-
-        for row in button_order:
-            for button_name in row:
-                emoji = self.parse_emoji(buttons[button_name])
-                if emoji is None:
-                    print(f"Skipping button {button_name} due to invalid emoji.")
-                    continue
-                view.add_item(discord.ui.Button(
-                    style=discord.ButtonStyle.primary,
-                    label="",
-                    emoji=emoji,
-                    custom_id=button_name
-                ))
+        view = ControlPanelView(self)
 
         await ctx.send(embed=embed, view=view)
-
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction: discord.Interaction):
-        """Handle button interactions."""
-        if interaction.type != discord.InteractionType.component:
-            return
-
-        custom_id = interaction.data['custom_id']
-        voice_channel = self._get_current_voice_channel(interaction.user)
-
-        if not voice_channel:
-            await interaction.response.send_message("You must be in a voice channel to use this command.", ephemeral=True)
-            return
-
-        autoroom_info = await self.get_autoroom_info(voice_channel)
-        if not autoroom_info:
-            await interaction.response.send_message("This voice channel is not managed by AutoRoom.", ephemeral=True)
-            return
-
-        # Check if the user is the owner of the channel or has override permissions
-        if autoroom_info.get("owner") != interaction.user.id and not self._has_override_permissions(interaction.user, autoroom_info):
-            owner_id = autoroom_info.get("owner")
-            owner = interaction.guild.get_member(owner_id)
-            owner_name = owner.display_name if owner else "Unknown"
-            await interaction.response.send_message(
-                f"Only {owner_name} or an admin can control the panel.", ephemeral=True
-            )
-            return
-
-        # Defer the interaction if needed
-        await interaction.response.defer(ephemeral=True)
-
-        # Handle the interaction
-        if custom_id == "lock":
-            await self.locked(interaction, voice_channel)
-        elif custom_id == "unlock":
-            await self.unlock(interaction, voice_channel)
-        elif custom_id == "limit":
-            await interaction.response.send_modal(SetUserLimitModal(self, voice_channel))
-        elif custom_id == "hide":
-            await self.private(interaction, voice_channel)
-        elif custom_id == "unhide":
-            await self.public(interaction, voice_channel)
-        elif custom_id == "invite":
-            await interaction.response.send_modal(RequestJoinModal(self, voice_channel))
-        elif custom_id == "ban":
-            await interaction.response.send_modal(DenyModal(self, voice_channel))
-        elif custom_id == "permit":
-            await interaction.response.send_modal(AllowModal(self, voice_channel))
-        elif custom_id == "rename":
-            await interaction.response.send_modal(ChangeNameModal(self, voice_channel))
-        elif custom_id == "bitrate":
-            await interaction.response.send_modal(ChangeBitrateModal(self, voice_channel))
-        elif custom_id == "region":
-            await self.change_region(interaction, voice_channel)
-        elif custom_id == "claim":
-            await self.claim(interaction, voice_channel)
-        elif custom_id == "transfer":
-            await interaction.response.send_modal(TransferOwnershipModal(self, voice_channel))
-        elif custom_id == "info":
-            await self.info(interaction, voice_channel)
 
     async def locked(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Lock your AutoRoom."""
@@ -257,6 +172,97 @@ class AutoRoomCommands(MixinMeta, ABC):
         if view_channel and not connect:
             return "locked"
         return "public"
+
+# View Class for Control Panel
+
+class ControlPanelView(discord.ui.View):
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["lock"], custom_id="lock")
+    async def lock(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await self.cog.locked(interaction, voice_channel)
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["unlock"], custom_id="unlock")
+    async def unlock(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await self.cog.unlock(interaction, voice_channel)
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["limit"], custom_id="limit")
+    async def limit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await interaction.response.send_modal(SetUserLimitModal(self.cog, voice_channel))
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["hide"], custom_id="hide")
+    async def hide(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await self.cog.private(interaction, voice_channel)
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["unhide"], custom_id="unhide")
+    async def unhide(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await self.cog.public(interaction, voice_channel)
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["invite"], custom_id="invite")
+    async def invite(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await interaction.response.send_modal(RequestJoinModal(self.cog, voice_channel))
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["ban"], custom_id="ban")
+    async def ban(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await interaction.response.send_modal(DenyModal(self.cog, voice_channel))
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["permit"], custom_id="permit")
+    async def permit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await interaction.response.send_modal(AllowModal(self.cog, voice_channel))
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["rename"], custom_id="rename")
+    async def rename(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await interaction.response.send_modal(ChangeNameModal(self.cog, voice_channel))
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["bitrate"], custom_id="bitrate")
+    async def bitrate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await interaction.response.send_modal(ChangeBitrateModal(self.cog, voice_channel))
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["region"], custom_id="region")
+    async def region(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await self.cog.change_region(interaction, voice_channel)
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["claim"], custom_id="claim")
+    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await self.cog.claim(interaction, voice_channel)
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["transfer"], custom_id="transfer")
+    async def transfer(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await interaction.response.send_modal(TransferOwnershipModal(self.cog, voice_channel))
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["info"], custom_id="info")
+    async def info(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel:
+            await self.cog.info(interaction, voice_channel)
 
 # Modal Classes
 
