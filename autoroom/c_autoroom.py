@@ -31,9 +31,9 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         # Define button labels and emojis
         labels = [
-            ("Lock", "🔒"), ("Unlock", "🔓"), ("Limit", "➖"), ("Hide", "🙈"),
-            ("Unhide", "🙉"), ("Invite", "📩"), ("Ban", "🚫"), ("Permit", "✅"),
-            ("Rename", "✏️"), ("Bitrate", "🎚 ️"), ("Region", "🌍"), ("Claim", "🏷 ️"),
+            ("Lock", "🔒"), ("Unlock", "🔓"), ("Limit", "🔢"), ("Hide", "🙈"),
+            ("Unhide", "🙉"), ("Invite", "📨"), ("Ban", "🚫"), ("Permit", "✅"),
+            ("Rename", "✏️"), ("Bitrate", "🎵"), ("Region", "🌐"), ("Claim", "🛡 ️"),
             ("Transfer", "🔄")
         ]
 
@@ -61,16 +61,16 @@ class AutoRoomCommands(MixinMeta, ABC):
         buttons = {
             "lock": "🔒",
             "unlock": "🔓",
-            "limit": "➖",
+            "limit": "🔢",
             "hide": "🙈",
             "unhide": "🙉",
-            "invite": "📩",
+            "invite": "📨",
             "ban": "🚫",
             "permit": "✅",
             "rename": "✏️",
-            "bitrate": "🎚 ️",
-            "region": "🌍",
-            "claim": "🏷 ️",
+            "bitrate": "🎵",
+            "region": "🌐",
+            "claim": "🛡 ️",
             "transfer": "🔄"
         }
 
