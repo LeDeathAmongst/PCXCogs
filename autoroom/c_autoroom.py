@@ -30,7 +30,7 @@ DEFAULT_EMOJIS = {
     "info": "<:Information:1279848926383702056>",  # Info
     "delete": "<:TrashCan:1279875131136806993>",  # TrashCan
     "create_text": "<:SpeachBubble:1279890650535428198>",  # Speech Bubble
-    "reset": "<:Reset:1280000000000000000>"  # Reset
+    "reset": "<:reset:1280057459146362880>"  # Reset
 }
 
 REGION_OPTIONS = [
