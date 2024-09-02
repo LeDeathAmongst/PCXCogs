@@ -56,7 +56,6 @@ class AutoRoomCommands(MixinMeta, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-        self.config.register_guild(**default_guild)
 
     @commands.command(name="controlpanel")
     @commands.guild_only()
