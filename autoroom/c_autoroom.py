@@ -1,9 +1,9 @@
 import datetime
 from abc import ABC
-from typing import Any, Optional
+from typing import Optional
 
 import discord
-from redbot.core import commands
+from redbot.core import commands, Config
 from redbot.core.utils.chat_formatting import humanize_timedelta
 
 from .abc import MixinMeta
@@ -11,6 +11,7 @@ from .abc import MixinMeta
 MAX_CHANNEL_NAME_LENGTH = 100
 MAX_BITRATE = 96  # Maximum bitrate in kbps
 DEFAULT_REGION = "us-central"  # Set your preferred default region here
+DEFAULT_CHANNEL_NAME = "New Voice Channel"
 
 DEFAULT_EMOJIS = {
     "lock": "<:Locked:1279848927587467447>",  # Locked
@@ -29,7 +30,7 @@ DEFAULT_EMOJIS = {
     "info": "<:Information:1279848926383702056>",  # Info
     "delete": "<:TrashCan:1279875131136806993>",  # TrashCan
     "create_text": "<:SpeachBubble:1279890650535428198>",  # Speech Bubble
-    "reset": "<:reset:1280057459146362880>"  # Reset
+    "reset": "<:Reset:1280000000000000000>"  # Reset
 }
 
 REGION_OPTIONS = [
@@ -54,13 +55,27 @@ class AutoRoomCommands(MixinMeta, ABC):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.last_used = {button: {} for button in DEFAULT_EMOJIS.keys()}
+        self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
+        default_guild = {"manager_role": None}
+        self.config.register_guild(**default_guild)
+
+    @commands.command(name="setmanagerrole")
+    @commands.guild_only()
+    @commands.admin_or_permissions(administrator=True)
+    async def set_manager_role(self, ctx: commands.Context, role: discord.Role) -> None:
+        """Set the role that can manage voice channels."""
+        await self.config.guild(ctx.guild).manager_role.set(role.id)
+        await ctx.send(f"Role {role.name} has been set to manage voice channels.")
 
     @commands.command(name="controlpanel")
     @commands.guild_only()
-    @commands.check(lambda ctx: ctx.author.id == ctx.guild.owner_id)
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
-        """Send the master control panel for the guild. Only the server owner can use this command."""
+        """Send the master control panel for the guild. Restricted to manager role."""
+        manager_role_id = await self.config.guild(ctx.guild).manager_role()
+        if manager_role_id is None or manager_role_id not in [role.id for role in ctx.author.roles]:
+            await ctx.send("You do not have permission to use this command.")
+            return
+
         embed = discord.Embed(title="Master Control Panel", color=0x7289da)
 
         # Add a description with the button labels and emojis
@@ -93,10 +108,8 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Lock your AutoRoom."""
         try:
             await interaction.response.defer(ephemeral=True)
-            view = ConfirmationView(self, interaction, channel, "lock", "Lock the room?")
-            text_channel = self.get_text_channel(channel)
-            if text_channel:
-                await text_channel.send(content="Are you sure you want to lock the room?", view=view)
+            await channel.set_permissions(interaction.guild.default_role, connect=False)
+            await interaction.followup.send(content="The AutoRoom is now locked.", ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
@@ -104,16 +117,19 @@ class AutoRoomCommands(MixinMeta, ABC):
         """Unlock your AutoRoom."""
         try:
             await interaction.response.defer(ephemeral=True)
-            view = ConfirmationView(self, interaction, channel, "unlock", "Unlock the room?")
-            text_channel = self.get_text_channel(channel)
-            if text_channel:
-                await text_channel.send(content="Are you sure you want to unlock the room?", view=view)
+            await channel.set_permissions(interaction.guild.default_role, connect=True)
+            await interaction.followup.send(content="The AutoRoom is now unlocked.", ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
 
     async def create_text_channel(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
         """Create a temporary text channel linked to the voice channel."""
         try:
+            existing_text_channel = self.get_text_channel(channel)
+            if existing_text_channel:
+                await interaction.response.send_message(f"You already have a linked text channel: {existing_text_channel.mention}.", ephemeral=True)
+                return
+
             category = channel.category
             text_channel = await category.create_text_channel(
                 name=f"{channel.name}-text",
@@ -272,7 +288,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         try:
             await interaction.response.defer(ephemeral=True)
             # Reset logic here (e.g., reset permissions, name, etc.)
-            await channel.edit(name="Default Channel Name", user_limit=None, rtc_region=None)
+            await channel.edit(name=DEFAULT_CHANNEL_NAME, user_limit=None, rtc_region=None)
             await interaction.followup.send("All configurations have been reset to default.", ephemeral=True)
         except Exception as e:
             await self.handle_error(interaction, e)
@@ -329,6 +345,12 @@ class AutoRoomCommands(MixinMeta, ABC):
                     return channel
         return None
 
+    def is_name_valid(self, name: str) -> bool:
+        """Check if the name is valid (not explicit or racist)."""
+        # Implement a basic filter or use an external library for advanced filtering
+        banned_words = ["explicit_word1", "explicit_word2", "racist_word1"]
+        return not any(banned_word in name.lower() for banned_word in banned_words)
+
 # View Class for Control Panel
 
 class ControlPanelView(discord.ui.View):
@@ -344,98 +366,83 @@ class ControlPanelView(discord.ui.View):
         await interaction.response.send_message("You must be the channel owner to use this button.", ephemeral=True)
         return False
 
-    async def rate_limit_check(self, interaction: discord.Interaction, button_id: str) -> bool:
-        user_id = interaction.user.id
-        now = datetime.datetime.now()
-        if user_id in self.cog.last_used[button_id]:
-            elapsed_time = (now - self.cog.last_used[button_id][user_id]).total_seconds()
-            if elapsed_time < 30:
-                await interaction.response.send_message("Please wait before using this button again.", ephemeral=True)
-                return False
-        self.cog.last_used[button_id][user_id] = now
-        return True
-
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["lock"], custom_id="lock")
     async def lock(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "lock"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.locked(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["unlock"], custom_id="unlock")
     async def unlock(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "unlock"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.unlock(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["limit"], custom_id="limit")
     async def limit(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "limit"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(SetUserLimitModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["hide"], custom_id="hide")
     async def hide(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "hide"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.private(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["unhide"], custom_id="unhide")
     async def unhide(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "unhide"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.public(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["invite"], custom_id="invite")
     async def invite(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "invite"):
-            text_channel = self.cog.get_text_channel(voice_channel)
-            if text_channel:
-                for member in voice_channel.members:
-                    if member != interaction.user:
-                        await member.send(f"{interaction.user.display_name} wants you to join their voice channel. Click here to join: {text_channel.mention}")
-                await interaction.response.send_message("Invite sent to all members in the voice channel.", ephemeral=True)
+        if voice_channel:
+            invite = await voice_channel.create_invite(max_uses=1, unique=True)
+            await interaction.response.send_message(f"Here is your invite to the voice channel: {invite.url}", ephemeral=True)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["ban"], custom_id="ban")
     async def ban(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "ban"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(DenyAllowSelect(self.cog, voice_channel, action="deny"))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["permit"], custom_id="permit")
     async def permit(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "permit"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(DenyAllowSelect(self.cog, voice_channel, action="allow"))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["rename"], custom_id="rename")
     async def rename(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "rename"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(ChangeNameModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["bitrate"], custom_id="bitrate")
     async def bitrate(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "bitrate"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(ChangeBitrateModal(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["region"], custom_id="region")
     async def region(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "region"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.change_region(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["claim"], custom_id="claim")
     async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "claim"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.claim(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["transfer"], custom_id="transfer")
     async def transfer(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "transfer"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await interaction.response.send_modal(TransferOwnershipSelect(self.cog, voice_channel))
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["info"], custom_id="info")
@@ -447,13 +454,13 @@ class ControlPanelView(discord.ui.View):
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["delete"], custom_id="delete")
     async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "delete"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.delete_channel(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["create_text"], custom_id="create_text")
     async def create_text(self, interaction: discord.Interaction, button: discord.ui.Button):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
-        if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "create_text"):
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
             await self.cog.create_text_channel(interaction, voice_channel)
 
     @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["reset"], custom_id="reset")
@@ -597,6 +604,10 @@ class ChangeNameModal(discord.ui.Modal, title="Change Channel Name"):
         try:
             await interaction.response.defer(ephemeral=True)
             new_name = self.new_name.value
+            if not self.cog.is_name_valid(new_name):
+                await interaction.followup.send("The channel name contains inappropriate content. Please choose another name.", ephemeral=True)
+                return
+
             if self.channel:
                 await self.channel.edit(name=new_name)
                 text_channel = self.cog.get_text_channel(self.channel)
