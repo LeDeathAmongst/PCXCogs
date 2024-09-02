@@ -56,23 +56,13 @@ class AutoRoomCommands(MixinMeta, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.config = Config.get_conf(self, identifier=1234567890, force_registration=True)
-        default_guild = {"manager_role": None}
         self.config.register_guild(**default_guild)
-
-    @commands.command(name="setmanagerrole")
-    @commands.guild_only()
-    @commands.admin_or_permissions(administrator=True)
-    async def set_manager_role(self, ctx: commands.Context, role: discord.Role) -> None:
-        """Set the role that can manage voice channels."""
-        await self.config.guild(ctx.guild).manager_role.set(role.id)
-        await ctx.send(f"Role {role.name} has been set to manage voice channels.")
 
     @commands.command(name="controlpanel")
     @commands.guild_only()
     async def autoroom_controlpanel(self, ctx: commands.Context) -> None:
-        """Send the master control panel for the guild. Restricted to manager role."""
-        manager_role_id = await self.config.guild(ctx.guild).manager_role()
-        if manager_role_id is None or manager_role_id not in [role.id for role in ctx.author.roles]:
+        """Send the master control panel for the guild. Restricted to guild owner."""
+        if ctx.author.id != ctx.guild.owner_id:
             await ctx.send("You do not have permission to use this command.")
             return
 
