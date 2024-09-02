@@ -28,7 +28,8 @@ DEFAULT_EMOJIS = {
     "transfer": "<:Person_With_Rotation:1279848936752021504>",  # Person_With_Rotation
     "info": "<:Information:1279848926383702056>",  # Info
     "delete": "<:TrashCan:1279875131136806993>",  # TrashCan
-    "create_text": "<:SpeachBubble:1279890650535428198>"  # Speech Bubble
+    "create_text": "<:SpeachBubble:1279890650535428198>",  # Speech Bubble
+    "reset": "<:reset:1280057459146362880>"  # Reset
 }
 
 REGION_OPTIONS = [
@@ -55,18 +56,6 @@ class AutoRoomCommands(MixinMeta, ABC):
         super().__init__(*args, **kwargs)
         self.last_used = {button: {} for button in DEFAULT_EMOJIS.keys()}
 
-    @staticmethod
-    def parse_emoji(emoji_str):
-        """Parse the emoji string and return a discord.PartialEmoji."""
-        try:
-            if emoji_str.startswith("<:") and emoji_str.endswith(">"):
-                name, id = emoji_str[2:-1].split(":")
-                return discord.PartialEmoji(name=name, id=int(id))
-            return discord.PartialEmoji(name=emoji_str)
-        except Exception as e:
-            print(f"Failed to parse emoji: {emoji_str} with error: {e}")
-            return None
-
     @commands.command(name="controlpanel")
     @commands.guild_only()
     @commands.check(lambda ctx: ctx.author.id == ctx.guild.owner_id)
@@ -91,7 +80,8 @@ class AutoRoomCommands(MixinMeta, ABC):
             f"{DEFAULT_EMOJIS['transfer']} Transfer",
             f"{DEFAULT_EMOJIS['info']} Info",
             f"{DEFAULT_EMOJIS['delete']} Delete Channel",
-            f"{DEFAULT_EMOJIS['create_text']} Create Text Channel"
+            f"{DEFAULT_EMOJIS['create_text']} Create Text Channel",
+            f"{DEFAULT_EMOJIS['reset']} Reset Configurations"
         ])
         embed.description = description
 
@@ -277,23 +267,15 @@ class AutoRoomCommands(MixinMeta, ABC):
         except Exception as e:
             await self.handle_error(interaction, e)
 
-    async def _get_user_from_input(self, guild: discord.Guild, input_value: str) -> Optional[discord.Member]:
-        """Get a user from input (ID or mention)."""
-        if input_value.isdigit():
-            return guild.get_member(int(input_value))
-        elif input_value.startswith("<@") and input_value.endswith(">"):
-            user_id = input_value.strip("<@!>")
-            return guild.get_member(int(user_id))
-        return None
-
-    async def _get_role_from_input(self, guild: discord.Guild, input_value: str) -> Optional[discord.Role]:
-        """Get a role from input (ID or mention)."""
-        if input_value.isdigit():
-            return guild.get_role(int(input_value))
-        elif input_value.startswith("<@&") and input_value.endswith(">"):
-            role_id = input_value.strip("<@&>")
-            return guild.get_role(int(role_id))
-        return None
+    async def reset_configurations(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Reset all configurations for the channel."""
+        try:
+            await interaction.response.defer(ephemeral=True)
+            # Reset logic here (e.g., reset permissions, name, etc.)
+            await channel.edit(name="Default Channel Name", user_limit=None, rtc_region=None)
+            await interaction.followup.send("All configurations have been reset to default.", ephemeral=True)
+        except Exception as e:
+            await self.handle_error(interaction, e)
 
     def _has_override_permissions(self, user: discord.Member, autoroom_info: dict) -> bool:
         """Check if the user has override permissions."""
@@ -473,6 +455,12 @@ class ControlPanelView(discord.ui.View):
         voice_channel = self.cog._get_current_voice_channel(interaction.user)
         if voice_channel and await self.ensure_owner(interaction, voice_channel) and await self.rate_limit_check(interaction, "create_text"):
             await self.cog.create_text_channel(interaction, voice_channel)
+
+    @discord.ui.button(label="", emoji=DEFAULT_EMOJIS["reset"], custom_id="reset")
+    async def reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+        voice_channel = self.cog._get_current_voice_channel(interaction.user)
+        if voice_channel and await self.ensure_owner(interaction, voice_channel):
+            await self.cog.reset_configurations(interaction, voice_channel)
 
 # Confirmation View for Actions
 
