@@ -531,7 +531,7 @@ class DenyAllowSelect(discord.ui.View):
         self.action = action
 
         options = [discord.SelectOption(label=member.display_name, value=str(member.id)) for member in channel.guild.members]
-        self.select = discord.ui.Select(placeholder="Select a member", options=options)
+        self.select = discord.ui.UserSelect(placeholder="Select a member", options=options)
         self.select.callback = self.on_select
         self.add_item(self.select)
 
@@ -554,7 +554,7 @@ class TransferOwnershipSelect(discord.ui.View):
         self.channel = channel
 
         options = [discord.SelectOption(label=member.display_name, value=str(member.id)) for member in channel.members]
-        self.select = discord.ui.Select(placeholder="Select a new owner", options=options)
+        self.select = discord.ui.UserSelect(placeholder="Select a new owner", options=options)
         self.select.callback = self.on_select
         self.add_item(self.select)
 
