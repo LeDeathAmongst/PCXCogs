@@ -1,4 +1,5 @@
 import datetime
+from Star_Utils import Cog
 from abc import ABC
 from typing import Optional
 
@@ -50,7 +51,7 @@ REGION_OPTIONS = [
     ("US West", "us-west"),
 ]
 
-class AutoRoomCommands(MixinMeta, ABC):
+class AutoRoomCommands(MixinMeta, ABC, Cog):
     """The autoroom command."""
 
     def __init__(self, *args, **kwargs):
