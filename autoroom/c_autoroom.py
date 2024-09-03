@@ -51,7 +51,10 @@ REGION_OPTIONS = [
     ("US West", "us-west"),
 ]
 
-class AutoRoomCommands(MixinMeta, ABC, Cog):
+class CombinedMeta(type(MixinMeta), type(ABC), type(Cog)):
+    pass
+
+class AutoRoomCommands(MixinMeta, ABC, Cog, metaclass=CombinedMeta):
     """The autoroom command."""
 
     def __init__(self, *args, **kwargs):
