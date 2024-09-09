@@ -1,5 +1,3 @@
-"""The autoroomset command."""
-
 import asyncio
 from abc import ABC
 from contextlib import suppress
@@ -19,73 +17,69 @@ channel_name_template = {
 }
 
 
-class AutoRoomSetCommands(MixinMeta, ABC):
-    """The autoroomset command."""
+class VoiceMeisterSetCommands(MixinMeta, ABC):
+    """The voicemeisterset command."""
 
     @commands.group()
     @commands.guild_only()
     @checks.admin_or_permissions(manage_guild=True)
-    async def autoroomset(self, ctx: commands.Context) -> None:
-        """Configure the AutoRoom cog.
+    async def voicemeisterset(self, ctx: commands.Context) -> None:
+        """Configure the VoiceMeister cog."""
 
-        For a quick rundown on how to get started with this cog,
-        check out [the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/autoroom/README.md)
-        """
-
-    @autoroomset.command()
+    @voicemeisterset.command()
     async def settings(self, ctx: commands.Context) -> None:
         """Display current settings."""
         if not ctx.guild:
             return
         server_section = SettingDisplay("Server Settings")
         server_section.add(
-            "Admin access all AutoRooms",
+            "Admin access all VoiceMeisters",
             await self.config.guild(ctx.guild).admin_access(),
         )
         server_section.add(
-            "Moderator access all AutoRooms",
+            "Moderator access all VoiceMeisters",
             await self.config.guild(ctx.guild).mod_access(),
         )
         bot_roles = ", ".join(
             [role.name for role in await self.get_bot_roles(ctx.guild)]
         )
         if bot_roles:
-            server_section.add("Bot roles allowed in all AutoRooms", bot_roles)
+            server_section.add("Bot roles allowed in all VoiceMeisters", bot_roles)
 
-        autoroom_sections = []
-        avcs = await self.get_all_autoroom_source_configs(ctx.guild)
+        voicemeister_sections = []
+        avcs = await self.get_all_voicemeister_source_configs(ctx.guild)
         for avc_id, avc_settings in avcs.items():
             source_channel = ctx.guild.get_channel(avc_id)
             if not isinstance(source_channel, discord.VoiceChannel):
                 continue
             dest_category = ctx.guild.get_channel(avc_settings["dest_category_id"])
-            autoroom_section = SettingDisplay(f"AutoRoom - {source_channel.name}")
-            autoroom_section.add(
+            voicemeister_section = SettingDisplay(f"VoiceMeister - {source_channel.name}")
+            voicemeister_section.add(
                 "Room type",
                 avc_settings["room_type"].capitalize(),
             )
-            autoroom_section.add(
+            voicemeister_section.add(
                 "Destination category",
                 f"#{dest_category.name}" if dest_category else "INVALID CATEGORY",
             )
             if avc_settings["legacy_text_channel"]:
-                autoroom_section.add(
+                voicemeister_section.add(
                     "Legacy Text Channel",
                     "True",
                 )
             if not avc_settings["perm_send_messages"]:
-                autoroom_section.add(
+                voicemeister_section.add(
                     "Send Messages",
                     "False",
                 )
             if not avc_settings["perm_owner_manage_channels"]:
-                autoroom_section.add(
+                voicemeister_section.add(
                     "Owner Manage Channel",
                     "False",
                 )
             member_roles = self.get_member_roles(source_channel)
             if member_roles:
-                autoroom_section.add(
+                voicemeister_section.add(
                     "Member Roles" if len(member_roles) > 1 else "Member Role",
                     ", ".join(role.name for role in member_roles),
                 )
@@ -97,28 +91,28 @@ class AutoRoomSetCommands(MixinMeta, ABC):
                 and avc_settings["channel_name_format"]
             ):
                 room_name_format = f'Custom: "{avc_settings["channel_name_format"]}"'
-            autoroom_section.add("Room name format", room_name_format)
-            autoroom_sections.append(autoroom_section)
+            voicemeister_section.add("Room name format", room_name_format)
+            voicemeister_sections.append(voicemeister_section)
 
-        message = server_section.display(*autoroom_sections)
+        message = server_section.display(*voicemeister_sections)
         required_check, optional_check, _ = await self._check_all_perms(ctx.guild)
         if not required_check:
             message += "\n" + error(
                 "It looks like I am missing one or more required permissions. "
-                "Until I have them, the AutoRoom cog may not function properly "
-                "for all AutoRoom Sources. "
-                "Check `[p]autoroomset permissions` for more information."
+                "Until I have them, the VoiceMeister cog may not function properly "
+                "for all VoiceMeister Sources. "
+                "Check `[p]voicemeisterset permissions` for more information."
             )
         elif not optional_check:
             message += "\n" + warning(
-                "All AutoRooms will work correctly, as I have all of the required permissions. "
+                "All VoiceMeisters will work correctly, as I have all of the required permissions. "
                 "However, it looks like I am missing one or more optional permissions "
-                "for one or more AutoRooms. "
-                "Check `[p]autoroomset permissions` for more information."
+                "for one or more VoiceMeisters. "
+                "Check `[p]voicemeisterset permissions` for more information."
             )
         await ctx.send(message)
 
-    @autoroomset.command(aliases=["perms"])
+    @voicemeisterset.command(aliases=["perms"])
     async def permissions(self, ctx: commands.Context) -> None:
         """Check that the bot has all needed permissions."""
         if not ctx.guild:
@@ -129,8 +123,8 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         if not details_list:
             await ctx.send(
                 info(
-                    "You don't have any AutoRoom Sources set up! "
-                    "Set one up with `[p]autoroomset create` first, "
+                    "You don't have any VoiceMeister Sources set up! "
+                    "Set one up with `[p]voicemeisterset create` first, "
                     "then I can check what permissions I need for it."
                 )
             )
@@ -142,7 +136,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         ):
             await ctx.send(
                 error(
-                    "Since you have multiple AutoRoom Sources, "
+                    "Since you have multiple VoiceMeister Sources, "
                     'I need the "Add Reactions" permission to display permission information.'
                 )
             )
@@ -152,10 +146,10 @@ class AutoRoomSetCommands(MixinMeta, ABC):
             await ctx.send(
                 error(
                     "It looks like I am missing one or more required permissions. "
-                    "Until I have them, the AutoRoom Source(s) in question will not function properly."
+                    "Until I have them, the VoiceMeister Source(s) in question will not function properly."
                     "\n\n"
                     "The easiest way of fixing this is just giving me these permissions as part of my server role, "
-                    "otherwise you will need to give me these permissions on the AutoRoom Source and destination "
+                    "otherwise you will need to give me these permissions on the VoiceMeister Source and destination "
                     "category, as specified below."
                 )
             )
@@ -163,14 +157,14 @@ class AutoRoomSetCommands(MixinMeta, ABC):
             await ctx.send(
                 warning(
                     "It looks like I am missing one or more optional permissions. "
-                    "All AutoRooms will work, however some extra features may not work. "
+                    "All VoiceMeisters will work, however some extra features may not work. "
                     "\n\n"
                     "The easiest way of fixing this is just giving me these permissions as part of my server role, "
                     "otherwise you will need to give me these permissions on the destination category, "
                     "as specified below."
                     "\n\n"
-                    "In the case of optional permissions, any permission on the AutoRoom Source will be copied to "
-                    "the created AutoRoom, as if we were cloning the AutoRoom Source. In order for this to work, "
+                    "In the case of optional permissions, any permission on the VoiceMeister Source will be copied to "
+                    "the created VoiceMeister, as if we were cloning the VoiceMeister Source. In order for this to work, "
                     "I need each permission to be allowed in the destination category (or server). "
                     "If it isn't allowed, I will skip copying that permission over."
                 )
@@ -190,9 +184,9 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         else:
             await ctx.send(details_list[0])
 
-    @autoroomset.group()
+    @voicemeisterset.group()
     async def access(self, ctx: commands.Context) -> None:
-        """Control access to all AutoRooms.
+        """Control access to all VoiceMeisters.
 
         Roles that are considered "admin" or "moderator" are
         set up with the commands `[p]set addadminrole`
@@ -201,40 +195,40 @@ class AutoRoomSetCommands(MixinMeta, ABC):
 
     @access.command(name="admin")
     async def access_admin(self, ctx: commands.Context) -> None:
-        """Allow Admins to join locked/private AutoRooms."""
+        """Allow Admins to join locked/private VoiceMeisters."""
         if not ctx.guild:
             return
         admin_access = not await self.config.guild(ctx.guild).admin_access()
         await self.config.guild(ctx.guild).admin_access.set(admin_access)
         await ctx.send(
             success(
-                f"Admins are {'now' if admin_access else 'no longer'} able to join (new) locked/private AutoRooms."
+                f"Admins are {'now' if admin_access else 'no longer'} able to join (new) locked/private VoiceMeisters."
             )
         )
 
     @access.command(name="mod")
     async def access_mod(self, ctx: commands.Context) -> None:
-        """Allow Moderators to join locked/private AutoRooms."""
+        """Allow Moderators to join locked/private VoiceMeisters."""
         if not ctx.guild:
             return
         mod_access = not await self.config.guild(ctx.guild).mod_access()
         await self.config.guild(ctx.guild).mod_access.set(mod_access)
         await ctx.send(
             success(
-                f"Moderators are {'now' if mod_access else 'no longer'} able to join (new) locked/private AutoRooms."
+                f"Moderators are {'now' if mod_access else 'no longer'} able to join (new) locked/private VoiceMeisters."
             )
         )
 
     @access.group(name="bot")
     async def access_bot(self, ctx: commands.Context) -> None:
-        """Automatically allow bots into AutoRooms.
+        """Automatically allow bots into VoiceMeisters.
 
-        The AutoRoom Owner is able to freely allow or deny these roles as they see fit.
+        The VoiceMeister Owner is able to freely allow or deny these roles as they see fit.
         """
 
     @access_bot.command(name="add")
     async def access_bot_add(self, ctx: commands.Context, role: discord.Role) -> None:
-        """Allow a bot role into every AutoRoom."""
+        """Allow a bot role into every VoiceMeister."""
         if not ctx.guild:
             return
         bot_role_ids = await self.config.guild(ctx.guild).bot_access()
@@ -247,7 +241,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         )
         await ctx.send(
             success(
-                f"AutoRooms will now allow the following bot roles in by default:\n\n{role_list}"
+                f"VoiceMeisters will now allow the following bot roles in by default:\n\n{role_list}"
             )
         )
 
@@ -255,7 +249,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
     async def access_bot_remove(
         self, ctx: commands.Context, role: discord.Role
     ) -> None:
-        """Disallow a bot role from joining every AutoRoom."""
+        """Disallow a bot role from joining every VoiceMeister."""
         if not ctx.guild:
             return
         bot_role_ids = await self.config.guild(ctx.guild).bot_access()
@@ -269,25 +263,25 @@ class AutoRoomSetCommands(MixinMeta, ABC):
             )
             await ctx.send(
                 success(
-                    f"AutoRooms will now allow the following bot roles in by default:\n\n{role_list}"
+                    f"VoiceMeisters will now allow the following bot roles in by default:\n\n{role_list}"
                 )
             )
         else:
             await ctx.send(
-                success("New AutoRooms will not allow any extra bot roles in.")
+                success("New VoiceMeisters will not allow any extra bot roles in.")
             )
 
-    @autoroomset.command(aliases=["enable", "add"])
+    @voicemeisterset.command(aliases=["enable", "add"])
     async def create(
         self,
         ctx: commands.Context,
         source_voice_channel: discord.VoiceChannel,
         dest_category: discord.CategoryChannel,
     ) -> None:
-        """Create an AutoRoom Source.
+        """Create a VoiceMeister Source.
 
-        Anyone joining an AutoRoom Source will automatically have a new
-        voice channel (AutoRoom) created in the destination category,
+        Anyone joining a VoiceMeister Source will automatically have a new
+        voice channel (VoiceMeister) created in the destination category,
         and then be moved into it.
         """
         if not ctx.guild:
@@ -298,10 +292,10 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         if not perms_required or not perms_optional:
             await ctx.send(
                 error(
-                    "I am missing a permission that the AutoRoom cog requires me to have. "
-                    "Check below for the permissions I require in both the AutoRoom Source "
+                    "I am missing a permission that the VoiceMeister cog requires me to have. "
+                    "Check below for the permissions I require in both the VoiceMeister Source "
                     "and the destination category. "
-                    "Try creating the AutoRoom Source again once I have these permissions."
+                    "Try creating the VoiceMeister Source again once I have these permissions."
                     "\n"
                     f"{details}"
                     "\n"
@@ -317,25 +311,25 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         options = ["public", "locked", "private", "server"]
         pred = MessagePredicate.lower_contained_in(options, ctx)
         await ctx.send(
-            "**Welcome to the setup wizard for creating an AutoRoom Source!**"
+            "**Welcome to the setup wizard for creating a VoiceMeister Source!**"
             "\n"
-            f"Users joining the {source_voice_channel.mention} AutoRoom Source will have an AutoRoom "
+            f"Users joining the {source_voice_channel.mention} VoiceMeister Source will have a VoiceMeister "
             f"created in the {dest_category.mention} category and be moved into it."
             "\n\n"
-            "**AutoRoom Type**"
+            "**VoiceMeister Type**"
             "\n"
-            "AutoRooms can be one of the following types when created:"
+            "VoiceMeisters can be one of the following types when created:"
             "\n"
-            "`public ` - Visible and joinable by other users. The AutoRoom Owner can kick/ban users out of them."
+            "`public ` - Visible and joinable by other users. The VoiceMeister Owner can kick/ban users out of them."
             "\n"
-            "`locked ` - Visible, but not joinable by other users. The AutoRoom Owner must allow users into their room."
+            "`locked ` - Visible, but not joinable by other users. The VoiceMeister Owner must allow users into their room."
             "\n"
-            "`private` - Not visible or joinable by other users. The AutoRoom Owner must allow users into their room."
+            "`private` - Not visible or joinable by other users. The VoiceMeister Owner must allow users into their room."
             "\n"
-            "`server ` - Same as a public AutoRoom, but with no AutoRoom Owner. "
-            "No modifications can be made to the generated AutoRoom."
+            "`server ` - Same as a public VoiceMeister, but with no VoiceMeister Owner. "
+            "No modifications can be made to the generated VoiceMeister."
             "\n\n"
-            "What would you like these created AutoRooms to be by default? (`public`/`locked`/`private`/`server`)"
+            "What would you like these created VoiceMeisters to be by default? (`public`/`locked`/`private`/`server`)"
         )
         answer = None
         with suppress(asyncio.TimeoutError):
@@ -357,9 +351,9 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         if not perms_required or not perms_optional:
             await ctx.send(
                 error(
-                    f"Since you want to have this AutoRoom Source create {new_source['room_type']} AutoRooms, "
+                    f"Since you want to have this VoiceMeister Source create {new_source['room_type']} VoiceMeisters, "
                     "I will need a few extra permissions. "
-                    "Try creating the AutoRoom Source again once I have these permissions."
+                    "Try creating the VoiceMeister Source again once I have these permissions."
                     "\n"
                     f"{details}"
                 )
@@ -372,10 +366,10 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         await ctx.send(
             "**Channel Name**"
             "\n"
-            "When an AutoRoom is created, a name will be generated for it. How would you like that name to be generated?"
+            "When a VoiceMeister is created, a name will be generated for it. How would you like that name to be generated?"
             "\n\n"
             f'`username` - Shows up as "{ctx.author.display_name}\'s Room"\n'
-            "`game    ` - AutoRoom Owner's playing game, otherwise `username`"
+            "`game    ` - VoiceMeister Owner's playing game, otherwise `username`"
         )
         answer = None
         with suppress(asyncio.TimeoutError):
@@ -389,56 +383,56 @@ class AutoRoomSetCommands(MixinMeta, ABC):
 
         # Save new source
         await self.config.custom(
-            "AUTOROOM_SOURCE", str(ctx.guild.id), str(source_voice_channel.id)
+            "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(source_voice_channel.id)
         ).set(new_source)
         await ctx.send(
             success(
                 "Settings saved successfully!\n"
-                "Check out `[p]autoroomset modify` for even more AutoRoom Source settings, "
+                "Check out `[p]voicemeisterset modify` for even more VoiceMeister Source settings, "
                 "or to make modifications to your above answers."
             )
         )
 
-    @autoroomset.command(aliases=["disable", "delete", "del"])
+    @voicemeisterset.command(aliases=["disable", "delete", "del"])
     async def remove(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
     ) -> None:
-        """Remove an AutoRoom Source."""
+        """Remove a VoiceMeister Source."""
         if not ctx.guild:
             return
         await self.config.custom(
-            "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+            "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
         ).clear()
         await ctx.send(
             success(
-                f"**{autoroom_source.mention}** is no longer an AutoRoom Source channel."
+                f"**{voicemeister_source.mention}** is no longer a VoiceMeister Source channel."
             )
         )
 
-    @autoroomset.group(aliases=["edit"])
+    @voicemeisterset.group(aliases=["edit"])
     async def modify(self, ctx: commands.Context) -> None:
-        """Modify an existing AutoRoom Source."""
+        """Modify an existing VoiceMeister Source."""
 
     @modify.command(name="category")
     async def modify_category(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
         dest_category: discord.CategoryChannel,
     ) -> None:
-        """Set the category that AutoRooms will be created in."""
+        """Set the category that VoiceMeisters will be created in."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).dest_category_id.set(dest_category.id)
             perms_required, perms_optional, details = self.check_perms_source_dest(
-                autoroom_source, dest_category, detailed=True
+                voicemeister_source, dest_category, detailed=True
             )
-            message = f"**{autoroom_source.mention}** will now create new AutoRooms in the **{dest_category.mention}** category."
+            message = f"**{voicemeister_source.mention}** will now create new VoiceMeisters in the **{dest_category.mention}** category."
             if perms_required and perms_optional:
                 await ctx.send(success(message))
             else:
@@ -446,8 +440,8 @@ class AutoRoomSetCommands(MixinMeta, ABC):
                     warning(
                         f"{message}"
                         "\n"
-                        "Do note, this new category does not have sufficient permissions for me to make AutoRooms. "
-                        "Until you fix this, the AutoRoom Source will not work."
+                        "Do note, this new category does not have sufficient permissions for me to make VoiceMeisters. "
+                        "Until you fix this, the VoiceMeister Source will not work."
                         "\n"
                         f"{details}"
                     )
@@ -455,98 +449,98 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
     @modify.group(name="type")
     async def modify_type(self, ctx: commands.Context) -> None:
-        """Choose what type of AutoRoom is created."""
+        """Choose what type of VoiceMeister is created."""
 
     @modify_type.command(name="public")
     async def modify_type_public(
-        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+        self, ctx: commands.Context, voicemeister_source: discord.VoiceChannel
     ) -> None:
-        """Rooms will be open to all. AutoRoom Owner has control over room."""
-        await self._save_public_private(ctx, autoroom_source, "public")
+        """Rooms will be open to all. VoiceMeister Owner has control over room."""
+        await self._save_public_private(ctx, voicemeister_source, "public")
 
     @modify_type.command(name="locked")
     async def modify_type_locked(
-        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+        self, ctx: commands.Context, voicemeister_source: discord.VoiceChannel
     ) -> None:
-        """Rooms will be visible to all, but not joinable. AutoRoom Owner can allow users in."""
-        await self._save_public_private(ctx, autoroom_source, "locked")
+        """Rooms will be visible to all, but not joinable. VoiceMeister Owner can allow users in."""
+        await self._save_public_private(ctx, voicemeister_source, "locked")
 
     @modify_type.command(name="private")
     async def modify_type_private(
-        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+        self, ctx: commands.Context, voicemeister_source: discord.VoiceChannel
     ) -> None:
-        """Rooms will be hidden. AutoRoom Owner can allow users in."""
-        await self._save_public_private(ctx, autoroom_source, "private")
+        """Rooms will be hidden. VoiceMeister Owner can allow users in."""
+        await self._save_public_private(ctx, voicemeister_source, "private")
 
     @modify_type.command(name="server")
     async def modify_type_server(
-        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+        self, ctx: commands.Context, voicemeister_source: discord.VoiceChannel
     ) -> None:
-        """Rooms will be open to all, but the server owns the AutoRoom (so they can't be modified)."""
-        await self._save_public_private(ctx, autoroom_source, "server")
+        """Rooms will be open to all, but the server owns the VoiceMeister (so they can't be modified)."""
+        await self._save_public_private(ctx, voicemeister_source, "server")
 
     async def _save_public_private(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
         room_type: str,
     ) -> None:
         """Save the public/private setting."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).room_type.set(room_type)
             await ctx.send(
                 success(
-                    f"**{autoroom_source.mention}** will now create `{room_type}` AutoRooms."
+                    f"**{voicemeister_source.mention}** will now create `{room_type}` VoiceMeisters."
                 )
             )
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
     @modify.group(name="name")
     async def modify_name(self, ctx: commands.Context) -> None:
-        """Set the default name format of an AutoRoom."""
+        """Set the default name format of a VoiceMeister."""
 
     @modify_name.command(name="username")
     async def modify_name_username(
-        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+        self, ctx: commands.Context, voicemeister_source: discord.VoiceChannel
     ) -> None:
         """Default format: PhasecoreX's Room.
 
         Custom format example:
         `{{username}}'s Room{% if dupenum > 1 %} ({{dupenum}}){% endif %}`
         """  # noqa: D401
-        await self._save_room_name(ctx, autoroom_source, "username")
+        await self._save_room_name(ctx, voicemeister_source, "username")
 
     @modify_name.command(name="game")
     async def modify_name_game(
-        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+        self, ctx: commands.Context, voicemeister_source: discord.VoiceChannel
     ) -> None:
         """The users current playing game, otherwise the username format.
 
         Custom format example:
         `{{game}}{% if not game %}{{username}}'s Room{% endif %}{% if dupenum > 1 %} ({{dupenum}}){% endif %}`
         """  # noqa: D401
-        await self._save_room_name(ctx, autoroom_source, "game")
+        await self._save_room_name(ctx, voicemeister_source, "game")
 
     @modify_name.command(name="custom")
     async def modify_name_custom(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
         *,
         template: str,
     ) -> None:
@@ -555,8 +549,8 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         Use `{{ expressions }}` to print variables and `{% statements %}` to do basic evaluations on variables.
 
         Variables supported:
-        - `username` - AutoRoom Owner's username
-        - `game    ` - AutoRoom Owner's game
+        - `username` - VoiceMeister Owner's username
+        - `game    ` - VoiceMeister Owner's game
         - `dupenum ` - An incrementing number that starts at 1, useful for un-duplicating channel names
 
         Statements supported:
@@ -564,21 +558,21 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         - Example: `{% if dupenum > 1 %}DupeNum is {{dupenum}}, which is greater than 1{% endif %}`
         - Another example: `{% if not game %}User isn't playing a game!{% endif %}`
 
-        It's kinda like Jinja2, but way simpler. Check out [the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/autoroom/README.md) for more info.
+        It's kinda like Jinja2, but way simpler. Check out [the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/voicemeister/README.md) for more info.
         """  # noqa: D401
-        await self._save_room_name(ctx, autoroom_source, "custom", template)
+        await self._save_room_name(ctx, voicemeister_source, "custom", template)
 
     async def _save_room_name(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
         room_type: str,
         template: str | None = None,
     ) -> None:
         """Save the room name type."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             data = self.get_template_data(ctx.author)
             if template:
                 template = template.replace("\n", " ")
@@ -593,22 +587,22 @@ class AutoRoomSetCommands(MixinMeta, ABC):
                             f"`{rte!s}`"
                             "\n\n"
                             "If you need some help, take a look at "
-                            "[the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/autoroom/README.md)."
+                            "[the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/voicemeister/README.md)."
                         )
                     )
                     return
                 await self.config.custom(
-                    "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                    "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
                 ).channel_name_format.set(template)
             else:
                 await self.config.custom(
-                    "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                    "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
                 ).channel_name_format.clear()
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).channel_name_type.set(room_type)
             message = (
-                f"New AutoRooms created by **{autoroom_source.mention}** "
+                f"New VoiceMeisters created by **{voicemeister_source.mention}** "
                 f"will use the **{room_type.capitalize()}** format"
             )
             if template:
@@ -628,7 +622,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
@@ -637,31 +631,31 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         self,
         ctx: commands.Context,
     ) -> None:
-        """Configure sending an introductory message to the AutoRoom text channel."""
+        """Configure sending an introductory message to the VoiceMeister text channel."""
 
     @modify_text.command(name="set")
     async def modify_text_set(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
         *,
         hint_text: str,
     ) -> None:
-        """Send a message to the newly generated AutoRoom text channel.
+        """Send a message to the newly generated VoiceMeister text channel.
 
         This can have template variables and statements, which you can learn more
-        about by looking at `[p]autoroomset modify name custom`, or by looking at
-        [the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/autoroom/README.md).
+        about by looking at `[p]voicemeisterset modify name custom`, or by looking at
+        [the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/voicemeister/README.md).
 
         The only additional variable that may be useful here is the `mention` variable,
         which will insert the users mention (pinging them).
 
         - Example:
-        `Hello {{mention}}! Welcome to your new AutoRoom!`
+        `Hello {{mention}}! Welcome to your new VoiceMeister!`
         """
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             data = self.get_template_data(ctx.author)
             try:
                 # Validate template
@@ -674,18 +668,18 @@ class AutoRoomSetCommands(MixinMeta, ABC):
                         f"`{rte!s}`"
                         "\n\n"
                         "If you need some help, take a look at "
-                        "[the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/autoroom/README.md)."
+                        "[the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/voicemeister/README.md)."
                     )
                 )
                 return
 
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).text_channel_hint.set(hint_text)
 
             await ctx.send(
                 success(
-                    f"New AutoRooms created by **{autoroom_source.mention}** will have the following message sent in them:"
+                    f"New VoiceMeisters created by **{voicemeister_source.mention}** will have the following message sent in them:"
                     "\n\n"
                     f"{hint_text_formatted}"
                 )
@@ -693,7 +687,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
@@ -701,85 +695,85 @@ class AutoRoomSetCommands(MixinMeta, ABC):
     async def modify_text_disable(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
     ) -> None:
-        """Disable sending a message to the newly generated AutoRoom text channel."""
+        """Disable sending a message to the newly generated VoiceMeister text channel."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).text_channel_hint.clear()
             await ctx.send(
                 success(
-                    f"New AutoRooms created by **{autoroom_source.mention}** will no longer have a message sent in them."
+                    f"New VoiceMeisters created by **{voicemeister_source.mention}** will no longer have a message sent in them."
                 )
             )
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
     @modify.group(name="specialperms")
     async def special_perms(self, ctx: commands.Context) -> None:
-        """Modify special AutoRoom permissions.
+        """Modify special VoiceMeister permissions.
 
         Remember, most permissions are automatically copied
-        from the AuthRoom Source over to the AutoRoom.
+        from the AuthRoom Source over to the VoiceMeister.
         These are for configuring special cases.
         """
 
     @special_perms.command(name="ownermodify")
     async def owner_manage_channels(
-        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+        self, ctx: commands.Context, voicemeister_source: discord.VoiceChannel
     ) -> None:
-        """Allow AutoRoom Owners to have the Manage Channels permission on their AutoRoom."""
+        """Allow VoiceMeister Owners to have the Manage Channels permission on their VoiceMeister."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             new_config_value = not await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).perm_owner_manage_channels()
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).perm_owner_manage_channels.set(new_config_value)
             await ctx.send(
                 success(
-                    f"AutoRoom Owners are {'now' if new_config_value else 'no longer'} able to modify their AutoRoom with native Discord controls."
+                    f"VoiceMeister Owners are {'now' if new_config_value else 'no longer'} able to modify their VoiceMeister with native Discord controls."
                 )
             )
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
     @special_perms.command(name="sendmessage")
     async def public_send_messages(
-        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+        self, ctx: commands.Context, voicemeister_source: discord.VoiceChannel
     ) -> None:
-        """Allow users to send messages in the AutoRoom built in text channel."""
+        """Allow users to send messages in the VoiceMeister built in text channel."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             new_config_value = not await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).perm_send_messages()
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).perm_send_messages.set(new_config_value)
             await ctx.send(
                 success(
-                    f"Users are {'now' if new_config_value else 'no longer'} able to send messages in the AutoRoom built in text channel."
+                    f"Users are {'now' if new_config_value else 'no longer'} able to send messages in the VoiceMeister built in text channel."
                 )
             )
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
@@ -794,24 +788,24 @@ class AutoRoomSetCommands(MixinMeta, ABC):
     async def modify_legacytext_enable(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
     ) -> None:
-        """Enable creating a legacy text channel with the AutoRoom."""
+        """Enable creating a legacy text channel with the VoiceMeister."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).legacy_text_channel.set(value=True)
             await ctx.send(
                 success(
-                    f"New AutoRooms created by **{autoroom_source.mention}** will now get their own legacy text channel."
+                    f"New VoiceMeisters created by **{voicemeister_source.mention}** will now get their own legacy text channel."
                 )
             )
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
@@ -819,24 +813,24 @@ class AutoRoomSetCommands(MixinMeta, ABC):
     async def modify_legacytext_disable(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
     ) -> None:
-        """Disable creating a legacy text channel with the AutoRoom."""
+        """Disable creating a legacy text channel with the VoiceMeister."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).legacy_text_channel.clear()
             await ctx.send(
                 success(
-                    f"New AutoRooms created by **{autoroom_source.mention}** will no longer get their own legacy text channel."
+                    f"New VoiceMeisters created by **{voicemeister_source.mention}** will no longer get their own legacy text channel."
                 )
             )
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
@@ -851,7 +845,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
     async def modify_legacytext_topic_set(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
         *,
         topic_text: str,
     ) -> None:
@@ -862,7 +856,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         """
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             data = self.get_template_data(ctx.author)
             try:
                 # Validate template
@@ -875,18 +869,18 @@ class AutoRoomSetCommands(MixinMeta, ABC):
                         f"`{rte!s}`"
                         "\n\n"
                         "If you need some help, take a look at "
-                        "[the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/autoroom/README.md)."
+                        "[the readme](https://github.com/PhasecoreX/PCXCogs/tree/master/voicemeister/README.md)."
                     )
                 )
                 return
 
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).text_channel_topic.set(topic_text)
 
             await ctx.send(
                 success(
-                    f"New AutoRooms created by **{autoroom_source.mention}** will have the following message topic set:"
+                    f"New VoiceMeisters created by **{voicemeister_source.mention}** will have the following message topic set:"
                     "\n\n"
                     f"{topic_text_formatted}"
                 )
@@ -894,7 +888,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
@@ -902,24 +896,24 @@ class AutoRoomSetCommands(MixinMeta, ABC):
     async def modify_legacytext_topic_disable(
         self,
         ctx: commands.Context,
-        autoroom_source: discord.VoiceChannel,
+        voicemeister_source: discord.VoiceChannel,
     ) -> None:
         """Disable setting a legacy text channel topic."""
         if not ctx.guild:
             return
-        if await self.get_autoroom_source_config(autoroom_source):
+        if await self.get_voicemeister_source_config(voicemeister_source):
             await self.config.custom(
-                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+                "VOICEMEISTER_SOURCE", str(ctx.guild.id), str(voicemeister_source.id)
             ).text_channel_topic.clear()
             await ctx.send(
                 success(
-                    f"New AutoRooms created by **{autoroom_source.mention}** will no longer have a topic set."
+                    f"New VoiceMeisters created by **{voicemeister_source.mention}** will no longer have a topic set."
                 )
             )
         else:
             await ctx.send(
                 error(
-                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                    f"**{voicemeister_source.mention}** is not a VoiceMeister Source channel."
                 )
             )
 
@@ -927,25 +921,25 @@ class AutoRoomSetCommands(MixinMeta, ABC):
         name="defaults", aliases=["bitrate", "memberrole", "other", "perms", "users"]
     )
     async def modify_defaults(self, ctx: commands.Context) -> None:
-        """Learn how AutoRoom defaults are set."""
+        """Learn how VoiceMeister defaults are set."""
         await ctx.send(
             info(
                 "**Bitrate/User Limit**"
                 "\n"
-                "Default bitrate and user limit settings are copied from the AutoRoom Source to the resulting AutoRoom."
+                "Default bitrate and user limit settings are copied from the VoiceMeister Source to the resulting VoiceMeister."
                 "\n\n"
                 "**Member Roles**"
                 "\n"
-                "Only members that can view and join an AutoRoom Source will be able to join its resulting AutoRooms. "
-                "If you would like to limit AutoRooms to only allow certain members, simply deny the everyone role "
-                "from viewing/connecting to the AutoRoom Source and allow your member roles to view/connect to it."
+                "Only members that can view and join a VoiceMeister Source will be able to join its resulting VoiceMeisters. "
+                "If you would like to limit VoiceMeisters to only allow certain members, simply deny the everyone role "
+                "from viewing/connecting to the VoiceMeister Source and allow your member roles to view/connect to it."
                 "\n\n"
                 "**Permissions**"
                 "\n"
-                "All permission overwrites (except for Manage Roles) will be copied from the AutoRoom Source "
-                "to the resulting AutoRoom. Every permission overwrite you want copied over, regardless if it is "
+                "All permission overwrites (except for Manage Roles) will be copied from the VoiceMeister Source "
+                "to the resulting VoiceMeister. Every permission overwrite you want copied over, regardless if it is "
                 "allowed or denied, must be allowed for the bot. It can either be allowed for the bot in the "
-                "destination category or server-wide with the roles it has. `[p]autoroomset permissions` will "
+                "destination category or server-wide with the roles it has. `[p]voicemeisterset permissions` will "
                 "show what permissions will be copied over."
             )
         )
@@ -953,15 +947,15 @@ class AutoRoomSetCommands(MixinMeta, ABC):
     async def _check_all_perms(
         self, guild: discord.Guild, *, detailed: bool = False
     ) -> tuple[bool, bool, list[str]]:
-        """Check all permissions for all AutoRooms in a guild."""
+        """Check all permissions for all VoiceMeisters in a guild."""
         result_required = True
         result_optional = True
         result_list = []
-        avcs = await self.get_all_autoroom_source_configs(guild)
+        avcs = await self.get_all_voicemeister_source_configs(guild)
         for avc_id, avc_settings in avcs.items():
-            autoroom_source = guild.get_channel(avc_id)
+            voicemeister_source = guild.get_channel(avc_id)
             category_dest = guild.get_channel(avc_settings["dest_category_id"])
-            if isinstance(autoroom_source, discord.VoiceChannel) and isinstance(
+            if isinstance(voicemeister_source, discord.VoiceChannel) and isinstance(
                 category_dest, discord.CategoryChannel
             ):
                 (
@@ -969,7 +963,7 @@ class AutoRoomSetCommands(MixinMeta, ABC):
                     optional_check,
                     detail,
                 ) = self.check_perms_source_dest(
-                    autoroom_source,
+                    voicemeister_source,
                     category_dest,
                     with_manage_roles_guild=avc_settings["room_type"] != "server",
                     with_legacy_text_channel=avc_settings["legacy_text_channel"],
